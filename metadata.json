@@ -1,0 +1,7 @@
+{
+  "name": "warpers",
+  "description": "A business management app with OCR scanning and statement tracking.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

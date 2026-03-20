@@ -1,0 +1,71 @@
+
+import { createClient } from '@supabase/supabase-js';
+
+// INSTRUCTIONS FOR SUPABASE SETUP:
+// 1. Go to https://supabase.com and create a new project.
+// 2. Get your URL and ANON KEY from Project Settings -> API
+// 3. Create a .env file in your project root and add:
+//    VITE_SUPABASE_URL=your_url_here
+//    VITE_SUPABASE_ANON_KEY=your_key_here
+
+const env = (import.meta as any).env || {};
+const envUrl = env.VITE_SUPABASE_URL;
+const envKey = env.VITE_SUPABASE_ANON_KEY;
+
+// Fallback: Check LocalStorage (allows users to input keys in UI if .env is missing)
+const localUrl = localStorage.getItem('warper_supabase_url');
+const localKey = localStorage.getItem('warper_supabase_key');
+
+let rawUrl = envUrl || localUrl;
+const rawKey = envKey || localKey;
+
+// Validation Helper
+const isValidUrl = (url: string | null | undefined) => {
+  if (!url) return false;
+  try {
+     return url.startsWith('http://') || url.startsWith('https://');
+  } catch {
+     return false;
+  }
+};
+
+// Attempt to fix common URL issues (missing protocol) for the check
+if (rawUrl && !rawUrl.startsWith('http') && rawUrl.includes('.')) {
+    rawUrl = `https://${rawUrl}`;
+}
+
+const isConfigValid = isValidUrl(rawUrl) && rawKey && rawKey !== 'undefined';
+
+export const isSupabaseConfigured = !!isConfigValid;
+
+if (!isSupabaseConfigured) {
+  console.warn("warper: Supabase credentials missing or invalid. Online features will be disabled.");
+}
+
+// Initialize the client safely. 
+// If URL is invalid, use a valid placeholder so the app doesn't crash on boot.
+const safeUrl = isConfigValid ? rawUrl : 'https://placeholder.supabase.co';
+const safeKey = isConfigValid ? rawKey : 'placeholder';
+
+export const supabase = createClient(safeUrl, safeKey);
+
+// Helper to save config from UI with sanitization
+export const saveSupabaseConfig = (url: string, key: string) => {
+    if (!url || !key) return;
+    
+    let cleanUrl = url.trim();
+    // Auto-append https if missing
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+        cleanUrl = `https://${cleanUrl}`;
+    }
+
+    localStorage.setItem('warper_supabase_url', cleanUrl);
+    localStorage.setItem('warper_supabase_key', key.trim());
+    window.location.reload();
+};
+
+export const resetSupabaseConfig = () => {
+    localStorage.removeItem('warper_supabase_url');
+    localStorage.removeItem('warper_supabase_key');
+    window.location.reload();
+};
