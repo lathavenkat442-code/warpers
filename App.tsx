@@ -31,23 +31,68 @@ const DatabaseConfigModal: React.FC<{ onClose: () => void; language: 'ta' | 'en'
     const t = TRANSLATIONS[language];
     const [setupUrl, setSetupUrl] = useState(localStorage.getItem('warper_supabase_url') || '');
     const [setupKey, setSetupKey] = useState(localStorage.getItem('warper_supabase_key') || '');
+    const [showSql, setShowSql] = useState(false);
+
     const handleSaveConfig = (e: React.FormEvent) => {
         e.preventDefault();
         saveSupabaseConfig(setupUrl, setupKey);
     };
+
+    const sqlScript = `create table user_app_data (
+  user_id uuid references auth.users not null primary key,
+  warpers jsonb default '[]',
+  dispatches jsonb default '[]',
+  returns jsonb default '[]',
+  warp_orders jsonb default '[]',
+  weavers jsonb default '[]',
+  looms jsonb default '[]',
+  suppliers jsonb default '[]',
+  denier_formulas jsonb default '[]',
+  loom_txns jsonb default '[]',
+  updated_at timestamp with time zone default timezone('utc'::text, now())
+);
+
+alter table user_app_data enable row level security;
+
+create policy "Users can view own app data." on user_app_data for select using ( auth.uid() = user_id );
+create policy "Users can insert own app data." on user_app_data for insert with check ( auth.uid() = user_id );
+create policy "Users can update own app data." on user_app_data for update using ( auth.uid() = user_id );`;
+
     return (
-        <div className="fixed inset-0 bg-black/70 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
-             <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative">
+        <div className="fixed inset-0 bg-black/70 z-[70] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
+             <div className="bg-white w-full max-w-md rounded-[2rem] p-6 shadow-2xl relative my-8">
                 <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200"><X size={20} /></button>
                 <div className="text-center mb-6">
                     <Database size={48} className="mx-auto text-zinc-600 mb-2"/>
                     <h2 className="text-xl font-black text-gray-800 tamil-font">{t.setupCloudDatabase}</h2>
                 </div>
-                <form onSubmit={handleSaveConfig} className="space-y-4">
+                <form onSubmit={handleSaveConfig} className="space-y-4 mb-4">
                     <input value={setupUrl} onChange={e => setSetupUrl(e.target.value)} className="w-full bg-gray-100 p-3 rounded-xl font-mono text-sm border outline-none" placeholder="Supabase URL" required />
                     <input value={setupKey} onChange={e => setSetupKey(e.target.value)} className="w-full bg-gray-100 p-3 rounded-xl font-mono text-sm border outline-none" placeholder="Anon Key" required />
                     <button type="submit" className={`w-full ${buttonColor} text-white p-3 rounded-xl font-bold shadow-lg`}>{t.saveAndConnect}</button>
                 </form>
+                
+                <div className="mt-6 pt-4 border-t border-gray-100">
+                  <button onClick={() => setShowSql(!showSql)} className="text-sm font-bold text-blue-600 hover:underline w-full text-left">
+                    {language === 'ta' ? 'SQL டேபிள் உருவாக்கும் கோட் (முக்கியம்)' : 'SQL Table Creation Code (Required)'}
+                  </button>
+                  {showSql && (
+                    <div className="mt-3">
+                      <p className="text-xs text-gray-500 mb-2">
+                        {language === 'ta' ? 'Supabase SQL Editor-ல் இதை காப்பி செய்து ரன் செய்யவும்:' : 'Copy and run this in Supabase SQL Editor:'}
+                      </p>
+                      <div className="relative">
+                        <textarea readOnly value={sqlScript} className="w-full h-40 bg-gray-900 text-green-400 p-3 rounded-xl font-mono text-xs outline-none resize-none" />
+                        <button 
+                          onClick={() => { navigator.clipboard.writeText(sqlScript); alert(language === 'ta' ? 'காப்பி செய்யப்பட்டது!' : 'Copied!'); }}
+                          className="absolute top-2 right-2 bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded text-xs"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
              </div>
         </div>
     );

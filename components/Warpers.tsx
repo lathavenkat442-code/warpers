@@ -4,6 +4,7 @@ import { User, Warper, YarnDispatch, WarperReturn, WarpOrder, DenierFormula, Wea
 import { GoogleGenAI } from "@google/genai";
 import { Plus, User as UserIcon, Trash2, Settings, FileText, ChevronDown, ChevronUp, Search, Printer, Camera, ArrowDownLeft, ArrowUpRight, PieChart, Share2 } from 'lucide-react';
 import { YARN_COLORS, YARN_TYPES, PREDEFINED_COLORS } from '../constants';
+import { syncColumnToSupabase, fetchAllDataFromSupabase } from '../services/dbService';
 
 interface WarpersProps {
   user: User;
@@ -146,43 +147,62 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
   }, [warperDispatches]);
 
   const isInitialLoad = useRef(true);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+
   useEffect(() => {
     if (!isInitialLoad.current) return;
     isInitialLoad.current = false;
 
-    setTimeout(() => {
+    const loadData = async () => {
       try {
-        const savedWarpers = localStorage.getItem(`viyabaari_warpers_${user.uid || 'guest'}`);
-        if (savedWarpers) setWarpers(JSON.parse(savedWarpers));
+        let dataFromDb = null;
+        if (user.uid && user.uid !== 'guest') {
+          dataFromDb = await fetchAllDataFromSupabase(user.uid);
+        }
 
-        const savedDispatches = localStorage.getItem(`viyabaari_yarn_dispatches_${user.uid || 'guest'}`);
-        if (savedDispatches) setDispatches(JSON.parse(savedDispatches));
+        const loadLocalOrDb = (key: string, dbKey: string, setter: any, defaultVal: any = []) => {
+          if (dataFromDb && dataFromDb[dbKey]) {
+            setter(dataFromDb[dbKey]);
+            localStorage.setItem(`${key}_${user.uid || 'guest'}`, JSON.stringify(dataFromDb[dbKey]));
+            return dataFromDb[dbKey];
+          } else {
+            const saved = localStorage.getItem(`${key}_${user.uid || 'guest'}`);
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              setter(parsed);
+              return parsed;
+            } else {
+              setter(defaultVal);
+              return defaultVal;
+            }
+          }
+        };
 
-        const savedReturns = localStorage.getItem(`viyabaari_warper_returns_${user.uid || 'guest'}`);
-        if (savedReturns) setReturns(JSON.parse(savedReturns));
-
-        const savedWarpOrders = localStorage.getItem(`viyabaari_warp_orders_${user.uid || 'guest'}`);
-        if (savedWarpOrders) setWarpOrders(JSON.parse(savedWarpOrders));
-
-        const savedWeavers = localStorage.getItem(`viyabaari_weavers_${user.uid || 'guest'}`);
-        if (savedWeavers) setWeavers(JSON.parse(savedWeavers));
-
-        const savedLooms = localStorage.getItem(`viyabaari_looms_${user.uid || 'guest'}`);
-        if (savedLooms) setLooms(JSON.parse(savedLooms));
-
-        const savedSuppliers = localStorage.getItem(`viyabaari_suppliers_${user.uid || 'guest'}`);
-        if (savedSuppliers) setSuppliers(JSON.parse(savedSuppliers));
-
-        const savedFormulas = localStorage.getItem(`viyabaari_denier_formulas_${user.uid || 'guest'}`);
-        if (savedFormulas) {
-          const parsed = JSON.parse(savedFormulas);
-          setDenierFormulas(parsed);
-          if (parsed.length > 0) setSelectedDeniers([parsed[0].denier]);
+        loadLocalOrDb('viyabaari_warpers', 'warpers', setWarpers);
+        loadLocalOrDb('viyabaari_yarn_dispatches', 'dispatches', setDispatches);
+        loadLocalOrDb('viyabaari_warper_returns', 'returns', setReturns);
+        loadLocalOrDb('viyabaari_warp_orders', 'warp_orders', setWarpOrders);
+        loadLocalOrDb('viyabaari_weavers', 'weavers', setWeavers);
+        loadLocalOrDb('viyabaari_looms', 'looms', setLooms);
+        loadLocalOrDb('viyabaari_suppliers', 'suppliers', setSuppliers);
+        
+        // Also load loom_txns from DB to localStorage even if not in state
+        if (dataFromDb && dataFromDb['loom_txns']) {
+          localStorage.setItem(`viyabaari_loom_txns_${user.uid || 'guest'}`, JSON.stringify(dataFromDb['loom_txns']));
+        }
+        
+        const formulas = loadLocalOrDb('viyabaari_denier_formulas', 'denier_formulas', setDenierFormulas);
+        if (formulas && formulas.length > 0) {
+          setSelectedDeniers([formulas[0].denier]);
         }
       } catch (err) {
-        console.error('Error loading data from localStorage:', err);
+        console.error('Error loading data:', err);
+      } finally {
+        setIsLoadingData(false);
       }
-    }, 0);
+    };
+
+    loadData();
   }, [user.uid]);
 
   const showToast = useCallback((msg: string, isError = false) => {
@@ -196,26 +216,31 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
   const saveWarpers = useCallback((newWarpers: Warper[]) => {
     setWarpers(newWarpers);
     localStorage.setItem(`viyabaari_warpers_${user.uid || 'guest'}`, JSON.stringify(newWarpers));
+    syncColumnToSupabase(user.uid, 'warpers', newWarpers);
   }, [user.uid]);
 
   const saveReturns = useCallback((newReturns: WarperReturn[]) => {
     setReturns(newReturns);
     localStorage.setItem(`viyabaari_warper_returns_${user.uid || 'guest'}`, JSON.stringify(newReturns));
+    syncColumnToSupabase(user.uid, 'returns', newReturns);
   }, [user.uid]);
 
   const saveDispatches = useCallback((newDispatches: YarnDispatch[]) => {
     setDispatches(newDispatches);
     localStorage.setItem(`viyabaari_yarn_dispatches_${user.uid || 'guest'}`, JSON.stringify(newDispatches));
+    syncColumnToSupabase(user.uid, 'dispatches', newDispatches);
   }, [user.uid]);
 
   const saveFormulas = useCallback((newFormulas: DenierFormula[]) => {
     setDenierFormulas(newFormulas);
     localStorage.setItem(`viyabaari_denier_formulas_${user.uid || 'guest'}`, JSON.stringify(newFormulas));
+    syncColumnToSupabase(user.uid, 'denier_formulas', newFormulas);
   }, [user.uid]);
 
   const saveWarpOrders = useCallback((newOrders: WarpOrder[]) => {
     setWarpOrders(newOrders);
     localStorage.setItem(`viyabaari_warp_orders_${user.uid || 'guest'}`, JSON.stringify(newOrders));
+    syncColumnToSupabase(user.uid, 'warp_orders', newOrders);
   }, [user.uid]);
 
   const handleAdd = useCallback(() => {
@@ -539,6 +564,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
       const updatedWeavers = [...weavers, newWeaver];
       setWeavers(updatedWeavers);
       localStorage.setItem(`viyabaari_weavers_${user.uid || 'guest'}`, JSON.stringify(updatedWeavers));
+      syncColumnToSupabase(user.uid, 'weavers', updatedWeavers);
       finalWeaverId = newWeaver.id;
       finalWeaverName = newWeaver.name;
     } else {
@@ -564,6 +590,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
       const updatedLooms = [...looms, newLoom];
       setLooms(updatedLooms);
       localStorage.setItem(`viyabaari_looms_${user.uid || 'guest'}`, JSON.stringify(updatedLooms));
+      syncColumnToSupabase(user.uid, 'looms', updatedLooms);
       finalLoomId = newLoom.id;
       finalLoomNumber = newLoom.loomNumber || '-';
     } else {
@@ -619,6 +646,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
           return txn;
         });
         localStorage.setItem(`viyabaari_loom_txns_${user.uid || 'guest'}`, JSON.stringify(updatedTxns));
+        syncColumnToSupabase(user.uid, 'loom_txns', updatedTxns);
       }
     }
 
@@ -2496,6 +2524,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                       const updated = [...weavers, newWeaver];
                       setWeavers(updated);
                       localStorage.setItem(`viyabaari_weavers_${user.uid || 'guest'}`, JSON.stringify(updated));
+                      syncColumnToSupabase(user.uid, 'weavers', updated);
                       setReturnWeaverId(newWeaver.id);
                     }
                   } else {
@@ -2708,6 +2737,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                           const updated = [...suppliers, newSupplier];
                           setSuppliers(updated);
                           localStorage.setItem(`viyabaari_suppliers_${user.uid || 'guest'}`, JSON.stringify(updated));
+                          syncColumnToSupabase(user.uid, 'suppliers', updated);
                           setDispatchSupplierId(newSupplier.id);
                           setIsAddingNewSupplier(false);
                           setNewSupplierName('');
