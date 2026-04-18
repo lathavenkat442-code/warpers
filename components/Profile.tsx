@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 import { TRANSLATIONS } from '../constants';
-import { LogOut, User as UserIcon, X, ChevronDown, Camera, ChevronLeft, Palette, Globe, ShieldCheck, Database, Wifi, WifiOff } from 'lucide-react';
-import { isSupabaseConfigured } from '../supabaseClient';
+import { LogOut, User as UserIcon, X, ChevronDown, Camera, ChevronLeft, Palette, Globe, ShieldCheck } from 'lucide-react';
 
 interface ProfileProps {
   user: User;
@@ -13,7 +12,6 @@ interface ProfileProps {
   language: 'ta' | 'en';
   onLanguageChange: (lang: 'ta' | 'en') => void;
   onResetApp: () => void;
-  onSetupServer: () => void;
   customAppName: string;
   setCustomAppName: (name: string) => void;
   themeColor: string;
@@ -25,7 +23,7 @@ interface ProfileProps {
   onInstall?: () => void;
 }
 
-const Profile: React.FC<ProfileProps> = ({ user, updateUser, onLogout, onLoginClick, language, onLanguageChange, onSetupServer, customAppName, setCustomAppName, themeColor, onThemeChange, buttonColor, onButtonColorChange, onBack, showInstallBtn, onInstall }) => {
+const Profile: React.FC<ProfileProps> = ({ user, updateUser, onLogout, onLoginClick, language, onLanguageChange, customAppName, setCustomAppName, themeColor, onThemeChange, buttonColor, onButtonColorChange, onBack, showInstallBtn, onInstall }) => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState(user.name);
   const [editMobile, setEditMobile] = useState(user.mobile || '');
@@ -223,40 +221,6 @@ const Profile: React.FC<ProfileProps> = ({ user, updateUser, onLogout, onLoginCl
                 className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900"
               />
             </div>
-          </div>
-        </div>
-
-        {/* Server Setup Section */}
-        <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-zinc-100">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">{t.server}</h4>
-            {isSupabaseConfigured ? (
-              <span className="flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-                <Wifi size={12} /> {t.connected}
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-xs font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded-lg">
-                <WifiOff size={12} /> {t.offline}
-              </span>
-            )}
-          </div>
-          
-          <div className="p-4 bg-zinc-50 rounded-2xl flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-white rounded-xl shadow-sm text-zinc-600">
-                <Database size={20} />
-              </div>
-              <div>
-                <p className="font-bold text-zinc-900">{t.dbConnection}</p>
-                <p className="text-xs text-zinc-500">{t.configOnlineStorage}</p>
-              </div>
-            </div>
-            <button 
-              onClick={onSetupServer}
-              className={`px-4 py-2 ${buttonColor} text-white text-sm font-bold rounded-xl transition`}
-            >
-              {t.setup}
-            </button>
           </div>
         </div>
 

@@ -75,6 +75,8 @@ export interface Loom {
   createdAt: number;
 }
 
+export type OrderType = 'warp' | 'bobbin' | 'top_warp';
+
 export interface WarpOrder {
   id: string;
   warperId: string;
@@ -100,6 +102,7 @@ export interface WarpOrder {
   wage?: number;
   wagePaid?: number;
   createdAt: number;
+  orderType?: OrderType;
 }
 
 export interface Supplier {
@@ -118,6 +121,17 @@ export interface LoomTransaction {
   sareeCount?: number;
   yarnGivenWeight?: number;
   yarnType?: string;
+  createdAt: number;
+}
+
+export interface WarpDesign {
+  id: string;
+  designName: string;
+  sections: WarpSection[];
+  warpYarnType?: string;
+  weftYarnType?: string;
+  totalSareesExpected?: number;
+  warpLengthMeters?: number;
   createdAt: number;
 }
 

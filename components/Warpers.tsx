@@ -1,8 +1,8 @@
 import { ScanVerificationModal } from './ScanVerificationModal';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { User, Warper, YarnDispatch, WarperReturn, WarpOrder, DenierFormula, Weaver, Supplier, WarpSection, Loom, LoomTransaction } from '../types';
+import { User, Warper, YarnDispatch, WarperReturn, WarpOrder, DenierFormula, Weaver, Supplier, WarpSection, Loom, LoomTransaction, OrderType, WarpDesign } from '../types';
 import { GoogleGenAI } from "@google/genai";
-import { Plus, User as UserIcon, Trash2, Settings, FileText, ChevronDown, ChevronUp, Search, Printer, Camera, ArrowDownLeft, ArrowUpRight, PieChart, Share2 } from 'lucide-react';
+import { Plus, User as UserIcon, Trash2, Settings, FileText, ChevronDown, ChevronUp, Search, Printer, Camera, ArrowDownLeft, ArrowUpRight, PieChart, Share2, RefreshCw, Phone, ChevronRight, BookText, Scale, Package, CircleDot, Layers, LayoutGrid, ArrowLeft, History, X, ClipboardList } from 'lucide-react';
 import { YARN_COLORS, YARN_TYPES, PREDEFINED_COLORS } from '../constants';
 import { syncColumnToSupabase, fetchAllDataFromSupabase } from '../services/dbService';
 
@@ -36,8 +36,12 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
   const [ledgerSortOrder, setLedgerSortOrder] = useState<'asc' | 'desc'>('desc');
   const pageSize = 25;
 
-  const [viewType, setViewType] = useState<'received' | 'returned' | 'balance' | 'orders' | 'ledger' | 'all-warps'>('ledger');
+  const [viewType, setViewType] = useState<'received' | 'returned' | 'balance' | 'orders' | 'ledger' | 'all-warps' | 'menu' | 'designs'>('menu');
+  const [activeOrderType, setActiveOrderType] = useState<OrderType>('warp');
   const [selectedDeniers, setSelectedDeniers] = useState<string[]>(['ALL']);
+  const [warpDesigns, setWarpDesigns] = useState<WarpDesign[]>([]);
+  const [isCreatingDesign, setIsCreatingDesign] = useState(false);
+  const [editingDesign, setEditingDesign] = useState<WarpDesign | null>(null);
 
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
@@ -128,8 +132,10 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
 
   const warperOrders = useMemo(() => {
     if (!selectedWarper) return [];
-    return warpOrders.filter(o => o.warperId === selectedWarper.id).sort((a, b) => b.createdAt - a.createdAt);
-  }, [warpOrders, selectedWarper]);
+    return warpOrders
+      .filter(o => o.warperId === selectedWarper.id && (o.orderType || 'warp') === activeOrderType)
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }, [warpOrders, selectedWarper, activeOrderType]);
 
   const groupedDispatches = useMemo(() => {
     const groups: Record<string, YarnDispatch[]> = {};
@@ -147,7 +153,6 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
   }, [warperDispatches]);
 
   const isInitialLoad = useRef(true);
-  const [isLoadingData, setIsLoadingData] = useState(true);
 
   useEffect(() => {
     if (!isInitialLoad.current) return;
@@ -185,6 +190,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
         loadLocalOrDb('viyabaari_weavers', 'weavers', setWeavers);
         loadLocalOrDb('viyabaari_looms', 'looms', setLooms);
         loadLocalOrDb('viyabaari_suppliers', 'suppliers', setSuppliers);
+        loadLocalOrDb('viyabaari_warp_designs', 'warp_designs', setWarpDesigns);
         
         // Also load loom_txns from DB to localStorage even if not in state
         if (dataFromDb && dataFromDb['loom_txns']) {
@@ -197,8 +203,6 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
         }
       } catch (err) {
         console.error('Error loading data:', err);
-      } finally {
-        setIsLoadingData(false);
       }
     };
 
@@ -243,6 +247,12 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
     syncColumnToSupabase(user.uid, 'warp_orders', newOrders);
   }, [user.uid]);
 
+  const saveWarpDesigns = useCallback((newDesigns: WarpDesign[]) => {
+    setWarpDesigns(newDesigns);
+    localStorage.setItem(`viyabaari_warp_designs_${user.uid || 'guest'}`, JSON.stringify(newDesigns));
+    syncColumnToSupabase(user.uid, 'warp_designs', newDesigns);
+  }, [user.uid]);
+
   const handleAdd = useCallback(() => {
     if (!newName.trim()) return;
     const timestamp = Date.now();
@@ -274,13 +284,18 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
     
     if (!finalWeight && ends) {
       const formula = denierFormulas.find(f => f.denier === returnDenier);
+      let gramsPerEnd = 0;
       if (formula) {
-        if (formula.gramsPerEnd) {
-          // formula.gramsPerEnd is grams per 1000m
-          finalWeight = (ends * formula.gramsPerEnd * length) / 1000000;
-        } else {
-          finalWeight = (ends * formula.multiplier * length) / 1000;
+        gramsPerEnd = formula.gramsPerEnd || (formula.multiplier * 1000);
+      } else {
+        const denierMatch = returnDenier.match(/(\d+)/);
+        if (denierMatch) {
+          gramsPerEnd = parseInt(denierMatch[1]) / 9;
         }
+      }
+      
+      if (gramsPerEnd > 0) {
+        finalWeight = (ends * gramsPerEnd * length) / 1000000;
       }
     }
 
@@ -405,7 +420,6 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
     setOrderSections(orderSections.filter((_, i) => i !== index));
   }, [orderSections]);
 
-  const totalEnds = orderSections.reduce((sum, sec) => sum + (sec.ends || 0), 0);
   const orderLength = parseFloat(orderWarpLength) || 0;
   
   const calculatedOrderWeight = (() => {
@@ -414,9 +428,22 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
     for (const sec of orderSections) {
       if (!sec.denier || !sec.ends) continue;
       const formula = denierFormulas.find(f => f.denier === sec.denier);
-      if (!formula) continue;
-      const gramsPerEnd = formula.gramsPerEnd || formula.multiplier;
-      totalWeight += (sec.ends * gramsPerEnd * orderLength) / 1000000;
+      let gramsPerEnd = 0;
+      if (formula) {
+        gramsPerEnd = formula.gramsPerEnd || (formula.multiplier * 1000);
+      } else {
+        // Fallback: try to parse denier from string (e.g. "50d" -> 50)
+        const denierMatch = sec.denier.match(/(\d+)/);
+        if (denierMatch) {
+          const denierVal = parseInt(denierMatch[1]);
+          // Standard formula: grams = (denier * 1000) / 9000 = denier / 9
+          gramsPerEnd = denierVal / 9;
+        }
+      }
+      
+      if (gramsPerEnd > 0) {
+        totalWeight += (sec.ends * gramsPerEnd * orderLength) / 1000000;
+      }
     }
     return totalWeight.toFixed(2);
   })();
@@ -437,11 +464,12 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
 
     const currentYear = new Date().getFullYear();
     const ordersThisYear = warpOrders.filter(o => new Date(o.date).getFullYear() === currentYear);
+    const prefix = activeOrderType === 'bobbin' ? 'ZB' : activeOrderType === 'top_warp' ? 'TW' : 'ORD';
     const maxId = ordersThisYear.reduce((max, order) => {
-      const idPart = parseInt(order.orderNumber.replace('ORD-', ''));
+      const idPart = parseInt(order.orderNumber.replace(/^(ORD|ZB|TW)-/, ''));
       return isNaN(idPart) ? max : Math.max(max, idPart);
     }, 100);
-    const newOrderNumber = `ORD-${maxId + 1}`;
+    const newOrderNumber = `${prefix}-${maxId + 1}`;
 
     const timestamp = Date.now();
     const newOrder: WarpOrder = {
@@ -461,7 +489,8 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
       warpLengthMeters: parseFloat(orderWarpLength),
       totalYarnWeight: parseFloat(orderTotalWeight || calculatedOrderWeight),
       status: 'pending',
-      createdAt: timestamp
+      createdAt: timestamp,
+      orderType: activeOrderType
     };
 
     const newOrders = [...warpOrders, newOrder];
@@ -475,8 +504,14 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
     setOrderWarpWeight('');
     setViewType('orders');
     
-    showToast(language === 'ta' ? 'புதிய வார்ப்பு ஆர்டர் வெற்றிகரமாக உருவாக்கப்பட்டது!' : 'New Warp Order created successfully!');
-  }, [orderDesignName, orderTotalSarees, orderTotalWeight, calculatedOrderWeight, orderWarpLength, selectedWarper, orderSections, warpOrders, saveWarpOrders, language, showToast]);
+    const successMsg = activeOrderType === 'warp' 
+      ? (language === 'ta' ? 'புதிய வார்ப்பு ஆர்டர் வெற்றிகரமாக உருவாக்கப்பட்டது!' : 'New Warp Order created successfully!')
+      : activeOrderType === 'bobbin'
+      ? (language === 'ta' ? 'புதிய பாபின் ஆர்டர் வெற்றிகரமாக உருவாக்கப்பட்டது!' : 'New Bobbin Order created successfully!')
+      : (language === 'ta' ? 'புதிய மேல் வார்ப்பு ஆர்டர் வெற்றிகரமாக உருவாக்கப்பட்டது!' : 'New Top Warp Order created successfully!');
+    
+    showToast(successMsg);
+  }, [orderDesignName, orderTotalSarees, orderTotalWeight, calculatedOrderWeight, orderWarpLength, selectedWarper, orderSections, warpOrders, saveWarpOrders, language, showToast, activeOrderType]);
 
   const handleCompleteOrder = useCallback((orderId: string) => {
     const order = warpOrders.find(o => o.id === orderId);
@@ -790,6 +825,75 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
     showToast(language === 'ta' ? 'அனைத்து பதிவுகளும் வெற்றிகரமாக சேமிக்கப்பட்டன!' : 'All records saved successfully!');
   }, [weavers, selectedWarper?.id, selectedDeniers, returns, saveReturns, language, showToast]);
 
+  const handleShareOrder = useCallback((order: WarpOrder) => {
+    const typeLabel = order.orderType === 'bobbin' ? (language === 'ta' ? 'பாபின் ஆர்டர்' : 'Bobbin Order') :
+                     order.orderType === 'top_warp' ? (language === 'ta' ? 'மேல் வார்ப்பு ஆர்டர்' : 'Top Warp Order') :
+                     (language === 'ta' ? 'வார்ப்பு ஆர்டர்' : 'Warp Order');
+    
+    const structure = order.sections.map(s => `${s.name}${s.denier ? ` (${s.denier})` : ''}: ${s.ends} ${s.color ? `(${s.color})` : ''}`).join('\n');
+    
+    const text = `*${typeLabel}*\n` +
+                 `------------------\n` +
+                 `${language === 'ta' ? 'ஐடி' : 'ID'}: ${order.orderNumber || order.id.slice(-4)}\n` +
+                 `${language === 'ta' ? 'தேதி' : 'Date'}: ${new Date(order.createdAt).toLocaleDateString()}\n` +
+                 `${language === 'ta' ? 'டிசைன்' : 'Design'}: ${order.designName}\n` +
+                 `${language === 'ta' ? 'தறிகாரர்' : 'Weaver'}: ${order.weaverName}\n` +
+                 `${order.loomNumber !== '-' ? `${language === 'ta' ? 'தறி எண்' : 'Loom No'}: ${order.loomNumber}\n` : ''}` +
+                 `------------------\n` +
+                 `*${language === 'ta' ? 'அமைப்பு' : 'Structure'}*:\n${structure}\n` +
+                 `------------------\n` +
+                 `${language === 'ta' ? 'வார்ப்பு நூல்' : 'Warp Yarn'}: ${order.warpYarnType}\n` +
+                 `${language === 'ta' ? 'ஊடை நூல்' : 'Weft Yarn'}: ${order.weftYarnType}\n` +
+                 `${language === 'ta' ? 'மொத்த சேலை' : 'Total Sarees'}: ${order.totalSareesExpected}\n` +
+                 `${language === 'ta' ? 'வார்ப்பு (மீட்டர்)' : 'Warp (Meters)'}: ${order.warpLengthMeters || '-'}\n` +
+                 `${language === 'ta' ? 'எடை' : 'Weight'}: ${order.totalWeight || '-'} kg`;
+
+    if (navigator.share) {
+      navigator.share({
+        title: typeLabel,
+        text: text,
+      }).catch(console.error);
+    } else {
+      // Fallback: Copy to clipboard
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(language === 'ta' ? 'விவரங்கள் நகலெடுக்கப்பட்டன!' : 'Details copied to clipboard!');
+      });
+    }
+  }, [language, weavers, showToast]);
+
+  const handleReorder = useCallback((order: WarpOrder) => {
+    if (window.confirm(language === 'ta' ? 'இதே விவரங்களுடன் புதிய ஆர்டரை உருவாக்கவா?' : 'Create a new order with the same details?')) {
+      const currentYear = new Date().getFullYear();
+      const ordersThisYear = warpOrders.filter(o => new Date(o.date).getFullYear() === currentYear);
+      const prefix = order.orderType === 'bobbin' ? 'ZB' : order.orderType === 'top_warp' ? 'TW' : 'ORD';
+      const maxId = ordersThisYear.reduce((max, o) => {
+        const idPart = parseInt((o.orderNumber || '').replace(/^(ORD|ZB|TW)-/, ''));
+        return isNaN(idPart) ? max : Math.max(max, idPart);
+      }, 100);
+      const newOrderNumber = `${prefix}-${maxId + 1}`;
+
+      const timestamp = Date.now();
+      const newOrder: WarpOrder = {
+        ...order,
+        id: timestamp.toString() + '_stock_order',
+        date: new Date().toISOString().split('T')[0],
+        orderNumber: newOrderNumber,
+        status: 'pending',
+        createdAt: timestamp,
+        wage: undefined,
+        wagePaid: undefined,
+        // Reset assignment fields to stock
+        loomId: 'STOCK',
+        weaverId: 'STOCK',
+        weaverName: language === 'ta' ? 'ஸ்டாக் (Stock)' : 'Stock',
+        loomNumber: '-',
+      };
+
+      saveWarpOrders([...warpOrders, newOrder]);
+      showToast(language === 'ta' ? 'புதிய ஆர்டர் உருவாக்கப்பட்டது!' : 'New order created successfully!');
+    }
+  }, [language, warpOrders, saveWarpOrders, showToast]);
+
   const handleDeleteOrder = useCallback((orderId: string) => {
     if (window.confirm(language === 'ta' ? 'இந்த ஆர்டரை நிச்சயமாக நீக்க வேண்டுமா?' : 'Are you sure you want to delete this order?')) {
       saveWarpOrders(warpOrders.filter(o => o.id !== orderId));
@@ -798,7 +902,15 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
   }, [language, warpOrders, saveWarpOrders, showToast]);
 
   const filteredWarperOrders = useMemo(() => {
-    const source = viewType === 'all-warps' && !selectedWarper ? warpOrders : warperOrders;
+    let source = warperOrders;
+    if (viewType === 'all-warps') {
+      if (selectedWarper) {
+        source = warpOrders.filter(o => o.warperId === selectedWarper.id).sort((a, b) => b.createdAt - a.createdAt);
+      } else {
+        source = warpOrders;
+      }
+    }
+
     return source.filter(order => {
       const searchMatch = !warpSearchQuery || 
         order.id.toLowerCase().includes(warpSearchQuery.toLowerCase()) ||
@@ -877,13 +989,25 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
 
   const returnEndsVal = parseInt(returnEnds) || 0;
   const returnLengthVal = parseFloat(returnLength) || 0;
-  const returnFormula = denierFormulas.find(f => f.denier === returnDenier);
 
   const calculatedReturnWeight = (() => {
-    if (!returnFormula || returnEndsVal === 0 || returnLengthVal === 0) return '0.00';
-    const gramsPerEnd = returnFormula.gramsPerEnd || returnFormula.multiplier;
-    const weightKg = (returnEndsVal * gramsPerEnd * returnLengthVal) / 1000000;
-    return weightKg.toFixed(2);
+    if (returnEndsVal === 0 || returnLengthVal === 0) return '0.00';
+    const formula = denierFormulas.find(f => f.denier === returnDenier);
+    let gramsPerEnd = 0;
+    if (formula) {
+      gramsPerEnd = formula.gramsPerEnd || (formula.multiplier * 1000);
+    } else {
+      const denierMatch = returnDenier.match(/(\d+)/);
+      if (denierMatch) {
+        gramsPerEnd = parseInt(denierMatch[1]) / 9;
+      }
+    }
+    
+    if (gramsPerEnd > 0) {
+      const weightKg = (returnEndsVal * gramsPerEnd * returnLengthVal) / 1000000;
+      return weightKg.toFixed(2);
+    }
+    return '0.00';
   })();
 
   // Render Warper Account View
@@ -1226,76 +1350,105 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
   }
 
   if (selectedWarper || viewType === 'all-warps') {
+    const isMenu = selectedWarper && viewType === 'menu';
+
     return (
       <div className="p-4 pb-24 md:pb-4 md:max-w-none mx-auto animate-in fade-in slide-in-from-right-4 duration-300">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
             <button 
               onClick={() => {
-                setSelectedWarper(null);
-                setViewType('ledger');
+                if (viewType === 'menu' || !selectedWarper) {
+                  setSelectedWarper(null);
+                  setViewType('menu'); 
+                } else {
+                  setViewType('menu');
+                }
               }}
-              className="px-4 py-2 bg-gray-100 rounded-xl text-sm font-bold hover:bg-gray-200 transition"
+              className="p-3 bg-zinc-100 rounded-2xl text-zinc-900 hover:bg-zinc-200 transition-all active:scale-90 shadow-sm"
             >
-              {language === 'ta' ? 'மூடு' : 'Close'}
+              <ArrowLeft size={20} strokeWidth={3} />
             </button>
             {selectedWarper ? (
               <div>
-                <h2 className="text-xl font-black text-gray-800">{selectedWarper.name}</h2>
-                {selectedWarper.phone && <p className="text-xs font-bold text-gray-500">{selectedWarper.phone}</p>}
+                <h2 className="text-2xl font-black text-gray-800 tracking-tight leading-none">{selectedWarper.name}</h2>
+                {selectedWarper.phone && <p className="text-sm font-bold text-gray-400 mt-1">{selectedWarper.phone}</p>}
               </div>
             ) : (
-              <h2 className="text-xl font-black text-gray-800">{language === 'ta' ? 'அனைத்து வார்ப்புகள்' : 'All Warps'}</h2>
+              <h2 className="text-2xl font-black text-gray-800 tracking-tight">{language === 'ta' ? 'அனைத்து வார்ப்புகள்' : 'All Warps'}</h2>
             )}
           </div>
           {selectedWarper && (
-            <button 
-              onClick={() => setViewStatement(selectedWarper.id)}
-              className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 flex items-center gap-1"
-            >
-              <FileText size={14} /> {language === 'ta' ? 'அறிக்கை' : 'Statement'}
-            </button>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setViewStatement(selectedWarper.id)}
+                className="p-3 rounded-2xl bg-blue-50 text-blue-600 hover:bg-blue-100 transition shadow-sm active:scale-90"
+                title={language === 'ta' ? 'அறிக்கை' : 'Statement'}
+              >
+                <FileText size={20} strokeWidth={2.5} />
+              </button>
+            </div>
           )}
         </div>
 
-        <div className="flex bg-gray-100 p-1 rounded-2xl mb-6 overflow-x-auto scrollbar-hide">
-          <button 
-            onClick={() => setViewType('ledger')}
-            className={`flex-none px-4 py-2 rounded-xl text-sm font-bold transition whitespace-nowrap ${viewType === 'ledger' ? 'bg-white text-zinc-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            {language === 'ta' ? 'கணக்கு நோட்டு' : 'Ledger'}
-          </button>
-          <button 
-            onClick={() => setViewType('balance')}
-            className={`flex-none px-4 py-2 rounded-xl text-sm font-bold transition whitespace-nowrap ${viewType === 'balance' ? 'bg-white text-zinc-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            {language === 'ta' ? 'இருப்பு' : 'Balance'}
-          </button>
-          <button 
-            onClick={() => setViewType('received')}
-            className={`flex-none px-4 py-2 rounded-xl text-sm font-bold transition whitespace-nowrap ${viewType === 'received' ? 'bg-white text-zinc-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            {language === 'ta' ? 'கொடுத்தது' : 'Given'}
-          </button>
-          <button 
-            onClick={() => setViewType('returned')}
-            className={`flex-none px-4 py-2 rounded-xl text-sm font-bold transition whitespace-nowrap ${viewType === 'returned' ? 'bg-white text-zinc-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            {language === 'ta' ? 'வந்தது' : 'Returned'}
-          </button>
-          <button 
-            onClick={() => setViewType('orders')}
-            className={`flex-none px-4 py-2 rounded-xl text-sm font-bold transition whitespace-nowrap ${viewType === 'orders' ? 'bg-white text-zinc-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            {language === 'ta' ? 'வார்ப்பு ஆர்டர்' : 'Warp Orders'}
-          </button>
-          <button 
-            onClick={() => setViewType('all-warps')}
-            className={`flex-none px-4 py-2 rounded-xl text-sm font-bold transition whitespace-nowrap ${viewType === 'all-warps' ? 'bg-white text-zinc-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            {language === 'ta' ? 'அனைத்து வார்ப்புகள்' : 'All Warps'}
-          </button>
-        </div>
+        {isMenu ? (
+          <div className="grid grid-cols-2 gap-4 animate-in fade-in zoom-in duration-500">
+            {[
+              { id: 'ledger', label: language === 'ta' ? 'கணக்கு நோட்டு' : 'Ledger', icon: BookText, color: 'text-blue-600', bg: 'bg-blue-50' },
+              { id: 'balance', label: language === 'ta' ? 'இருப்பு' : 'Balance', icon: Scale, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+              { id: 'received', label: language === 'ta' ? 'கொடுத்தது' : 'Given', icon: ArrowUpRight, color: 'text-amber-600', bg: 'bg-amber-50' },
+              { id: 'returned', label: language === 'ta' ? 'வந்தது' : 'Returned', icon: ArrowDownLeft, color: 'text-rose-600', bg: 'bg-rose-50' },
+              { id: 'warp_order', label: language === 'ta' ? 'வார்ப்பு ஆர்டர்' : 'Warp Order', icon: Package, color: 'text-purple-600', bg: 'bg-purple-50' },
+              { id: 'bobbin_order', label: language === 'ta' ? 'பாபின் ஆர்டர்' : 'Bobbin Order', icon: CircleDot, color: 'text-cyan-600', bg: 'bg-cyan-50' },
+              { id: 'top_warp_order', label: language === 'ta' ? 'மேல் வார்ப்பு ஆர்டர்' : 'Top Warp Order', icon: Layers, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+              { id: 'all-warps', label: language === 'ta' ? 'அனைத்து வார்ப்புகள்' : 'All Warps', icon: LayoutGrid, color: 'text-orange-600', bg: 'bg-orange-50' },
+              { id: 'designs', label: language === 'ta' ? 'வார்ப்பு அமைப்புகள்' : 'Warp Structures', icon: ClipboardList, color: 'text-teal-600', bg: 'bg-teal-50' },
+            ].map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => {
+                  if (cat.id === 'warp_order') { setViewType('orders'); setActiveOrderType('warp'); }
+                  else if (cat.id === 'bobbin_order') { setViewType('orders'); setActiveOrderType('bobbin'); }
+                  else if (cat.id === 'top_warp_order') { setViewType('orders'); setActiveOrderType('top_warp'); }
+                  else { setViewType(cat.id as any); }
+                }}
+                className={`flex flex-col items-center justify-center p-4 aspect-square rounded-[2rem] ${cat.bg} border border-transparent hover:border-zinc-200 transition-all duration-300 shadow-sm hover:shadow-xl group active:scale-95`}
+              >
+                <div className={`w-16 h-16 rounded-3xl ${cat.bg} flex items-center justify-center mb-4 shadow-inner ${cat.color} group-hover:scale-110 transition-transform duration-300`}>
+                  <cat.icon size={28} strokeWidth={2.5} />
+                </div>
+                <span className={`text-sm font-black tamil-font text-center tracking-tight ${cat.color} opacity-90`}>{cat.label}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Detailed Views Header with Breadcrumb-like feel */}
+            {selectedWarper && (
+              <div className="flex items-center gap-2 mb-6 bg-gray-50 p-3 rounded-2xl border border-gray-100">
+                <div className="w-8 h-8 rounded-lg bg-zinc-800 text-white flex items-center justify-center font-black text-xs">
+                  {viewType === 'ledger' ? 'L' : viewType === 'balance' ? 'B' : viewType === 'received' ? 'G' : viewType === 'returned' ? 'R' : viewType === 'designs' ? 'D' : 'O'}
+                </div>
+                <span className="text-sm font-black text-gray-700 capitalize">
+                  {viewType === 'ledger' ? (language === 'ta' ? 'கணக்கு நோட்டு' : 'Ledger') :
+                   viewType === 'balance' ? (language === 'ta' ? 'இருப்பு' : 'Balance') :
+                   viewType === 'received' ? (language === 'ta' ? 'கொடுத்தது' : 'Given') :
+                   viewType === 'returned' ? (language === 'ta' ? 'வந்தது' : 'Returned') :
+                   viewType === 'all-warps' ? (language === 'ta' ? 'அனைத்து வார்ப்புகள்' : 'All Warps') :
+                   viewType === 'designs' ? (language === 'ta' ? 'வார்ப்பு அமைப்புகள்' : 'Warp Structures') :
+                   (activeOrderType === 'warp' ? (language === 'ta' ? 'வார்ப்பு ஆர்டர்' : 'Warp Order') :
+                    activeOrderType === 'bobbin' ? (language === 'ta' ? 'பாபின் ஆர்டர்' : 'Bobbin Order') :
+                    (language === 'ta' ? 'மேல் வார்ப்பு ஆர்டர்' : 'Top Warp Order'))}
+                </span>
+                <div className="flex-1" />
+                <button 
+                  onClick={() => setViewType('menu')}
+                  className="text-xs font-black text-blue-500 hover:text-blue-700 flex items-center gap-1 transition-colors bg-blue-50 px-2 py-1 rounded-lg"
+                >
+                  <History size={14} /> {language === 'ta' ? 'மெனு' : 'Menu'}
+                </button>
+              </div>
+            )}
 
         {selectedWarper && viewType === 'ledger' && (
           <div className="space-y-4">
@@ -1327,7 +1480,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
               </div>
               <button 
                 onClick={() => setIsManagingFormulas(true)}
-                className="p-2 bg-white text-gray-500 rounded-xl shadow-sm border border-gray-200 hover:bg-gray-50 flex-shrink-0"
+                className="p-2 bg-amber-50 text-amber-600 rounded-xl shadow-sm border border-amber-100 hover:bg-amber-100 flex-shrink-0 transition-all"
                 title={language === 'ta' ? 'ஃபார்முலா செட்டிங்ஸ்' : 'Formula Settings'}
               >
                 <Settings size={20} />
@@ -1337,7 +1490,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
             <div className="flex gap-2 mb-4">
               <button 
                 onClick={openAddDispatchModal}
-                className="flex-1 py-2 bg-zinc-50 text-zinc-600 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-zinc-100 transition"
+                className="flex-1 py-2 bg-amber-50 text-amber-600 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-amber-100 transition"
               >
                 <ArrowDownLeft size={16} /> {language === 'ta' ? 'நூல் வரவு' : 'Yarn Given'}
               </button>
@@ -1366,7 +1519,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                     alert('Sharing not supported on this browser');
                   }
                 }}
-                className="flex-1 py-2 bg-zinc-50 text-zinc-600 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-zinc-100 transition cursor-pointer"
+                className="flex-1 py-2 bg-purple-50 text-purple-600 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-purple-100 transition cursor-pointer"
               >
                 <Share2 size={16} /> {language === 'ta' ? 'பகிர்' : 'Share'}
               </button>
@@ -1678,7 +1831,13 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                 onClick={() => setIsCreatingOrder(true)}
                 className={`${buttonColor} text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-md transition`}
               >
-                <Plus size={16} /> {language === 'ta' ? 'புதிய வார்ப்பு ஆர்டர் உருவாக்கு' : 'Create New Warp Order'}
+                <Plus size={16} /> {
+                  activeOrderType === 'warp' 
+                    ? (language === 'ta' ? 'புதிய வார்ப்பு ஆர்டர் உருவாக்கு' : 'Create New Warp Order')
+                    : activeOrderType === 'bobbin'
+                    ? (language === 'ta' ? 'புதிய பாபின் ஆர்டர் உருவாக்கு' : 'Create New Bobbin Order')
+                    : (language === 'ta' ? 'புதிய மேல் வார்ப்பு ஆர்டர் உருவாக்கு' : 'Create New Top Warp Order')
+                }
               </button>
             </div>
             
@@ -1733,17 +1892,39 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                         </button>
                       )}
                       <button 
-                        onClick={() => handleDeleteOrder(order.id)}
-                        className="p-2 rounded-xl bg-red-50 text-red-500 hover:bg-red-100 transition"
+                        onClick={() => handleShareOrder(order)}
+                        className="p-2 rounded-xl bg-blue-50 text-blue-500 hover:bg-blue-100 transition"
+                        title={language === 'ta' ? 'பகிர்' : 'Share'}
                       >
-                        <Trash2 size={18} />
+                        <Share2 size={18} />
                       </button>
+                      {order.status === 'pending' ? (
+                        <button 
+                          onClick={() => handleDeleteOrder(order.id)}
+                          className="p-2 rounded-xl bg-red-50 text-red-500 hover:bg-red-100 transition"
+                          title={language === 'ta' ? 'நீக்கு' : 'Delete'}
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => handleReorder(order)}
+                          className="p-2 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition"
+                          title={language === 'ta' ? 'மீண்டும் ஆர்டர் செய்' : 'Reorder'}
+                        >
+                          <RefreshCw size={18} />
+                        </button>
+                      )}
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-3 mt-4">
                     <div className="bg-gray-50 p-2 rounded-xl">
-                      <p className="text-xs text-gray-500 font-medium">{language === 'ta' ? 'வார்ப்பு நூல்' : 'Warp Yarn'}</p>
+                      <p className="text-xs text-gray-500 font-medium">
+                        {(order.orderType || 'warp') === 'warp' ? (language === 'ta' ? 'வார்ப்பு நூல்' : 'Warp Yarn') :
+                         (order.orderType || 'warp') === 'bobbin' ? (language === 'ta' ? 'பாபின் நூல்' : 'Bobbin Yarn') :
+                         (language === 'ta' ? 'மேல் வார்ப்பு நூல்' : 'Top Warp Yarn')}
+                      </p>
                       <p className="font-bold text-gray-800">{order.warpYarnType}</p>
                     </div>
                     <div className="bg-gray-50 p-2 rounded-xl">
@@ -1871,6 +2052,15 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                             <span className="bg-zinc-100 text-zinc-800 text-xs font-bold px-2 py-1 rounded-lg">
                               {language === 'ta' ? 'ஐடி:' : 'ID:'} {order.orderNumber || order.id.slice(-4)}
                             </span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              order.orderType === 'bobbin' ? 'bg-blue-100 text-blue-700' :
+                              order.orderType === 'top_warp' ? 'bg-purple-100 text-purple-700' :
+                              'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              {order.orderType === 'bobbin' ? (language === 'ta' ? 'பாபின்' : 'Bobbin') :
+                               order.orderType === 'top_warp' ? (language === 'ta' ? 'மேல் வார்ப்பு' : 'Top Warp') :
+                               (language === 'ta' ? 'வார்ப்பு' : 'Warp')}
+                            </span>
                           </div>
                           <div className="grid grid-cols-2 gap-2 mt-2">
                             <div>
@@ -1883,8 +2073,26 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                             </div>
                           </div>
                         </div>
-                        <div className="ml-4 text-gray-400">
-                          {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        <div className="flex items-center gap-2 ml-4">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleShareOrder(order); }}
+                            className="p-2 rounded-xl bg-blue-50 text-blue-500 hover:bg-blue-100 transition"
+                            title={language === 'ta' ? 'பகிர்' : 'Share'}
+                          >
+                            <Share2 size={18} />
+                          </button>
+                          {order.status === 'completed' && (
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleReorder(order); }}
+                              className="p-2 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition"
+                              title={language === 'ta' ? 'மீண்டும் ஆர்டர் செய்' : 'Reorder'}
+                            >
+                              <RefreshCw size={18} />
+                            </button>
+                          )}
+                          <div className="text-gray-400">
+                            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                          </div>
                         </div>
                       </div>
 
@@ -2216,105 +2424,459 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
           </>
         )}
 
-      {isAssigningOrder && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-300">
-            <h3 className="font-black text-gray-800 mb-6 text-xl tamil-font">{language === 'ta' ? 'தறிக்கு மாற்று' : 'Assign to Loom'}</h3>
+        {selectedWarper && viewType === 'designs' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center px-1">
+              <h4 className="font-black text-gray-800 tracking-wider text-xs uppercase opacity-40">
+                {language === 'ta' ? 'அனைத்து டிசைன்கள்' : 'All Designs'}
+              </h4>
+              <button 
+                onClick={() => {
+                  setEditingDesign(null);
+                  setOrderDesignName('');
+                  setOrderSections([{ id: Date.now().toString(), name: '', ends: 0, color: '', length: 0, denier: '' }]);
+                  setOrderWarpLength('1000');
+                  setOrderWarpWeight('0');
+                  setIsCreatingDesign(true);
+                }}
+                className="flex items-center gap-2 bg-teal-600 text-white px-4 py-2.5 rounded-[1.2rem] text-xs font-black shadow-lg shadow-teal-900/10 active:scale-95 transition hover:bg-teal-700"
+              >
+                <Plus size={16} strokeWidth={3} /> {language === 'ta' ? 'புதிய டிசைன்' : 'New Design'}
+              </button>
+            </div>
+
+            {warpDesigns.length === 0 ? (
+              <div className="text-center py-16 bg-white rounded-[2.5rem] border border-dashed border-gray-200 shadow-sm animate-in fade-in zoom-in">
+                <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <ClipboardList size={32} className="text-gray-300" />
+                </div>
+                <p className="text-gray-500 font-bold tamil-font text-lg">
+                  {language === 'ta' ? 'டிசைன்கள் எதுவும் இல்லை' : 'No designs yet'}
+                </p>
+                <p className="text-xs text-gray-400 mt-2 font-medium">
+                  {language === 'ta' ? 'புதிய டிசைனை உருவாக்க பட்டனை அழுத்தவும்' : 'Tap button to create your first design'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {warpDesigns.map(design => (
+                  <div key={design.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 hover:shadow-md transition group relative overflow-hidden">
+                    <div className="flex justify-between items-start mb-4 relative z-10">
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-2xl bg-zinc-50 border border-zinc-100 text-zinc-800 flex items-center justify-center font-black text-xl shadow-inner group-hover:bg-zinc-800 group-hover:text-white transition-all duration-300">
+                          {design.designName.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <h4 className="font-black text-gray-800 text-xl tracking-tight leading-none mb-1.5">{design.designName}</h4>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest">{language === 'ta' ? 'வ.நீளம்:' : 'Length:'} {design.warpLengthMeters}m</span>
+                            <span className="w-1 h-1 rounded-full bg-gray-200" />
+                            <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest leading-none">
+                              {new Date(design.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            setEditingDesign(design);
+                            setOrderDesignName(design.designName);
+                            setOrderSections(design.sections);
+                            setOrderWarpLength(design.warpLengthMeters?.toString() || '1000');
+                            setIsCreatingDesign(true);
+                          }}
+                          className="p-2.5 text-zinc-400 hover:text-zinc-800 hover:bg-zinc-50 rounded-2xl transition-all"
+                        >
+                          <Settings size={20} strokeWidth={2.5} />
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (window.confirm(language === 'ta' ? 'டிசைனை நீக்க வேண்டுமா?' : 'Delete design?')) {
+                              saveWarpDesigns(warpDesigns.filter(d => d.id !== design.id));
+                            }
+                          }}
+                          className="p-2.5 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"
+                        >
+                          <Trash2 size={20} strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-zinc-50/50 p-4 rounded-3xl mb-6 flex flex-wrap gap-2 relative z-10">
+                      {design.sections.map((sec, idx) => (
+                        <div key={idx} className="bg-white border border-zinc-100 px-3 py-1.5 rounded-xl text-xs flex items-center gap-2 shadow-sm">
+                          <span className="text-zinc-400 font-black text-[9px] uppercase tracking-tighter">{sec.name}:</span>
+                          <span className="font-black text-zinc-800">{sec.ends}</span>
+                          {sec.denier && <span className="text-[9px] font-black text-zinc-300">({sec.denier})</span>}
+                          {sec.color && (
+                            <div 
+                              className="w-2.5 h-2.5 rounded-full border border-white shadow-sm" 
+                              style={{ 
+                                backgroundColor: PREDEFINED_COLORS.find(c => c.name === sec.color)?.code || 
+                                                 (sec.color.startsWith('#') || YARN_COLORS.includes(sec.color) ? sec.color : '#cbd5e1') 
+                              }} 
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <button 
+                      onClick={() => {
+                        setOrderDesignName(design.designName);
+                        setOrderSections(JSON.parse(JSON.stringify(design.sections))); // Deep copy
+                        setOrderWarpLength(design.warpLengthMeters?.toString() || '1000');
+                        setActiveOrderType('warp');
+                        setIsCreatingOrder(true);
+                        setViewType('orders');
+                      }}
+                      className="w-full py-5 bg-zinc-800 text-white rounded-[1.8rem] font-black text-sm shadow-xl shadow-zinc-200 active:scale-95 transition-all flex items-center justify-center gap-3 relative z-10"
+                    >
+                      <Plus size={20} strokeWidth={3} />
+                      {language === 'ta' ? 'புதிய வார்ப்பு ஆர்டர்' : 'Create Warp Order'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+      {isCreatingDesign && (
+        <div className="fixed inset-0 bg-zinc-900/60 z-[100] flex items-end sm:items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[3rem] p-8 shadow-2xl animate-in slide-in-from-bottom-10 duration-500 border border-white/20 relative max-h-[90vh] overflow-y-auto hide-scrollbar">
+            <button 
+              onClick={() => {
+                setIsCreatingDesign(false);
+                setEditingDesign(null);
+              }}
+              className="absolute top-6 right-6 p-2 text-gray-300 hover:text-gray-600 hover:bg-gray-50 rounded-full transition"
+            >
+              <X size={20} strokeWidth={3} />
+            </button>
             
-            <div className="space-y-4 mb-6">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={assignWeaverSearch}
-                  onChange={(e) => {
-                    setAssignWeaverSearch(e.target.value);
-                    const existing = weavers.find(w => w.name.toLowerCase() === e.target.value.toLowerCase());
-                    if (existing) {
-                      setAssignWeaverId(existing.id);
-                    } else {
-                      setAssignWeaverId('');
-                    }
-                    setAssignLoomId('');
-                  }}
-                  onFocus={() => setShowWeaverDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowWeaverDropdown(false), 200)}
-                  placeholder={language === 'ta' ? 'தறிக்காரர் பெயர் (தேட அல்லது புதிதாக சேர்க்க)' : 'Weaver Name (Search or Add New)'}
-                  className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm outline-none focus:border-zinc-400 font-bold"
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-50 border border-zinc-100 flex items-center justify-center text-zinc-800 shadow-inner">
+                <ClipboardList size={24} strokeWidth={2.5} />
+              </div>
+              <h3 className="font-black text-zinc-800 dark:text-gray-100 text-2xl tracking-tight leading-none">
+                {editingDesign ? (language === 'ta' ? 'டிசைன் திருத்து' : 'Edit Design') : (language === 'ta' ? 'புதிய டிசைன்' : 'New Design')}
+              </h3>
+            </div>
+
+            <div className="space-y-6 mb-8">
+              <div>
+                <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2 ml-1">
+                  {language === 'ta' ? 'டிசைன் பெயர் / எண்' : 'Design Name / Number'}
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="..."
+                  value={orderDesignName}
+                  onChange={e => setOrderDesignName(e.target.value)}
+                  className="w-full p-5 bg-zinc-50 border border-zinc-100 rounded-[2rem] text-sm outline-none focus:border-zinc-400 font-black transition-all shadow-inner"
                 />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-3 ml-1">
+                  <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                    {language === 'ta' ? 'வார்ப்பு அமைப்பு' : 'Warp Structure'}
+                  </label>
+                  <button 
+                    onClick={addOrderSection}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 text-zinc-800 rounded-xl hover:bg-zinc-200 transition-all font-black text-[10px] uppercase tracking-tighter"
+                  >
+                    <Plus size={14} strokeWidth={3} />
+                    {language === 'ta' ? 'சேர்' : 'Add'}
+                  </button>
+                </div>
+                
+                <div className="space-y-3">
+                  {orderSections.map((section, index) => (
+                    <div key={section.id || index} className="p-5 bg-zinc-50/50 rounded-3xl border border-zinc-100 relative group animate-in slide-in-from-top-2">
+                       <button 
+                        onClick={() => removeOrderSection(index)}
+                        className="absolute -top-2 -right-2 p-1.5 bg-white text-red-500 rounded-full border border-red-50 shadow-sm opacity-0 group-hover:opacity-100 transition-all active:scale-95"
+                      >
+                        <Trash2 size={12} strokeWidth={3} />
+                      </button>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-1">
+                          <label className="text-[9px] font-black text-zinc-400 uppercase mb-1.5 ml-1 block">{language === 'ta' ? 'டீனியர்' : 'Denier'}</label>
+                          <select 
+                            value={section.denier || ''}
+                            onChange={e => handleOrderSectionChange(index, 'denier', e.target.value)}
+                            className="w-full p-4 bg-white border border-zinc-100 rounded-2xl text-[10px] font-black outline-none focus:border-zinc-400 shadow-sm appearance-none"
+                          >
+                            <option value="">-</option>
+                            {YARN_TYPES.map((type, idx) => (
+                              <option key={`design-denier-${idx}`} value={type}>{type}</option>
+                            ))}
+                          </select>
+                        </div>
+                         <div className="col-span-1">
+                          <label className="text-[9px] font-black text-zinc-400 uppercase mb-1.5 ml-1 block">{language === 'ta' ? 'பகுதி' : 'Section'}</label>
+                          <select 
+                            value={section.name}
+                            onChange={e => handleOrderSectionChange(index, 'name', e.target.value)}
+                            className="w-full p-4 bg-white border border-zinc-100 rounded-2xl text-[10px] font-black outline-none focus:border-zinc-400 shadow-sm appearance-none"
+                          >
+                            <option value="">-</option>
+                            <option value={language === 'ta' ? 'உடல்' : 'Body'}>{language === 'ta' ? 'உடல்' : 'Body'}</option>
+                            <option value={language === 'ta' ? 'ரைட் பார்டர்' : 'Right Border'}>{language === 'ta' ? 'ரைட் பார்டர்' : 'Right Border'}</option>
+                            <option value={language === 'ta' ? 'லெப்ட் பார்டர்' : 'Left Border'}>{language === 'ta' ? 'லெப்ட் பார்டர்' : 'Left Border'}</option>
+                            <option value={language === 'ta' ? 'பிளைன் வார்ப்பு' : 'Plain Warp'}>{language === 'ta' ? 'பிளைன் வார்ப்பு' : 'Plain Warp'}</option>
+                          </select>
+                        </div>
+                        <div className="col-span-1">
+                          <label className="text-[9px] font-black text-zinc-400 uppercase mb-1.5 ml-1 block">{language === 'ta' ? 'இழை' : 'Ends'}</label>
+                          <input 
+                            type="number" 
+                            value={section.ends || ''}
+                            onChange={e => handleOrderSectionChange(index, 'ends', parseInt(e.target.value) || 0)}
+                            className="w-full p-4 bg-white border border-zinc-100 rounded-2xl text-[10px] font-black outline-none focus:border-zinc-400 shadow-sm"
+                          />
+                        </div>
+                        <div className="col-span-1">
+                         <label className="text-[9px] font-black text-zinc-400 uppercase mb-1.5 ml-1 block">{language === 'ta' ? 'கலர்' : 'Color'}</label>
+                          <select 
+                            value={section.color || ''}
+                            onChange={e => handleOrderSectionChange(index, 'color', e.target.value)}
+                            className="w-full p-4 bg-white border border-zinc-100 rounded-2xl text-[10px] font-black outline-none focus:border-zinc-400 shadow-sm appearance-none"
+                          >
+                            <option value="">-</option>
+                            {YARN_COLORS.map((color, idx) => (
+                              <option key={`design-color-${idx}`} value={color}>{color}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2 ml-1">
+                  {language === 'ta' ? 'வார்ப்பு நீளம் (மீட்டர்)' : 'Warp Length (Meters)'}
+                </label>
+                <input 
+                  type="number" 
+                  value={orderWarpLength}
+                  onChange={e => setOrderWarpLength(e.target.value)}
+                  className="w-full p-5 bg-zinc-50 border border-zinc-100 rounded-[2rem] text-sm outline-none focus:border-zinc-400 font-black transition-all shadow-inner"
+                />
+              </div>
+            </div>
+
+            <button 
+              onClick={() => {
+                if (!orderDesignName.trim()) {
+                   showToast(language === 'ta' ? 'டிசைன் பெயரைத் தட்டச்சு செய்யவும்' : 'Please enter design name', 'error');
+                   return;
+                }
+                const timestamp = Date.now();
+                const newDesign: WarpDesign = {
+                  id: editingDesign ? editingDesign.id : timestamp.toString(),
+                  designName: orderDesignName,
+                  sections: JSON.parse(JSON.stringify(orderSections)),
+                  warpLengthMeters: parseFloat(orderWarpLength) || 1000,
+                  createdAt: editingDesign ? editingDesign.createdAt : timestamp
+                };
+
+                if (editingDesign) {
+                  saveWarpDesigns(warpDesigns.map(d => d.id === editingDesign.id ? newDesign : d));
+                } else {
+                  saveWarpDesigns([...warpDesigns, newDesign]);
+                }
+                setIsCreatingDesign(false);
+                setEditingDesign(null);
+                showToast(language === 'ta' ? 'டிசைன் சேமிக்கப்பட்டது!' : 'Design saved successfully!');
+              }}
+              className={`w-full py-5 ${buttonColor} text-white rounded-[2.8rem] font-black text-base shadow-2xl shadow-zinc-200 active:scale-95 transition-all mb-4`}
+            >
+              {language === 'ta' ? 'டிசைன் சேமி' : 'Save Design'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isAssigningOrder && (
+        <div className="fixed inset-0 bg-zinc-900/60 z-[100] flex items-end sm:items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-sm rounded-[3rem] p-8 shadow-2xl animate-in slide-in-from-bottom-10 duration-500 border border-white/20 relative">
+            <button 
+              onClick={() => {
+                setIsAssigningOrder(null);
+                setAssignWeaverId('');
+                setAssignWeaverSearch('');
+                setAssignLoomId('');
+              }}
+              className="absolute top-6 right-6 p-2 text-gray-300 hover:text-gray-600 hover:bg-gray-50 rounded-full transition"
+            >
+              <X size={20} strokeWidth={3} />
+            </button>
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-100 flex items-center justify-center text-zinc-800">
+                <ArrowUpRight size={24} strokeWidth={2.5} />
+              </div>
+              <h3 className="font-black text-gray-800 dark:text-gray-100 text-2xl tracking-tight leading-none">
+                {language === 'ta' ? 'தறிக்கு மாற்று' : 'Assign to Loom'}
+              </h3>
+            </div>
+
+            {/* Order Summary */}
+            {(() => {
+              const order = warpOrders.find(o => o.id === isAssigningOrder);
+              if (!order) return null;
+              return (
+                <div className="mb-6 p-4 bg-zinc-50 rounded-[1.5rem] border border-zinc-100 animate-in fade-in zoom-in duration-300">
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2 ml-1">
+                    {language === 'ta' ? 'ஆர்டர் விவரம்' : 'Order Details'}
+                  </p>
+                  <div className="flex justify-between items-center px-1">
+                    <div>
+                      <p className="font-black text-zinc-800">{order.designName}</p>
+                      <p className="text-xs text-zinc-500 font-bold">#{order.orderNumber}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-black text-emerald-600 leading-none">{order.warpLengthMeters}m</p>
+                      <p className="text-[10px] text-zinc-400 font-black tracking-tighter mt-1">{order.warpYarnType}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            
+            <div className="space-y-6 mb-8">
+              {/* Weaver Selection */}
+              <div className="relative">
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                  {language === 'ta' ? 'தறிக்காரர்' : 'Weaver'}
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={assignWeaverSearch}
+                    onChange={(e) => {
+                      setAssignWeaverSearch(e.target.value);
+                      const existing = weavers.find(w => w.name.toLowerCase() === e.target.value.toLowerCase());
+                      if (existing) {
+                        setAssignWeaverId(existing.id);
+                      } else {
+                        setAssignWeaverId('');
+                      }
+                      setAssignLoomId('');
+                    }}
+                    onFocus={() => setShowWeaverDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowWeaverDropdown(false), 200)}
+                    placeholder={language === 'ta' ? 'தேட அல்லது சேர்க்க...' : 'Search or add new...'}
+                    className="w-full p-5 bg-gray-50 border border-gray-100 rounded-[2rem] text-sm outline-none focus:border-zinc-400 font-bold transition-all shadow-inner"
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                    <Search size={18} strokeWidth={2.5} />
+                  </div>
+                </div>
+
                 {showWeaverDropdown && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-100 rounded-2xl shadow-lg max-h-48 overflow-y-auto">
+                  <div className="absolute z-[110] w-full mt-2 bg-white border border-gray-100 rounded-3xl shadow-2xl max-h-56 overflow-hidden overflow-y-auto animate-in slide-in-from-top-2">
                     {weavers.filter(w => w.name.toLowerCase().includes(assignWeaverSearch.toLowerCase())).map(w => (
                       <div
                         key={w.id}
-                        className="p-3 hover:bg-gray-50 cursor-pointer font-bold text-sm"
+                        className="p-4 hover:bg-zinc-50 cursor-pointer font-bold text-sm flex items-center justify-between group transition-colors"
                         onClick={() => {
                           setAssignWeaverId(w.id);
                           setAssignWeaverSearch(w.name);
                           setShowWeaverDropdown(false);
                         }}
                       >
-                        {w.name}
+                        <span className="text-gray-700">{w.name}</span>
+                        <ChevronRight size={14} className="text-gray-300 group-hover:text-zinc-600 transition-colors" />
                       </div>
                     ))}
                     {assignWeaverSearch.trim() && !weavers.some(w => w.name.toLowerCase() === assignWeaverSearch.trim().toLowerCase()) && (
                       <div
-                        className="p-3 hover:bg-gray-50 cursor-pointer font-bold text-sm text-blue-600"
+                        className="p-4 hover:bg-blue-50 cursor-pointer font-bold text-sm text-blue-600 flex items-center gap-2 border-t border-blue-50 transition-colors"
                         onClick={() => {
                           setAssignWeaverId('');
                           setShowWeaverDropdown(false);
                         }}
                       >
-                        + {language === 'ta' ? `புதிய தறிக்காரர்: "${assignWeaverSearch}"` : `Add New: "${assignWeaverSearch}"`}
+                        <Plus size={16} strokeWidth={3} />
+                        {language === 'ta' ? `புதிய தறிக்காரர்: "${assignWeaverSearch}"` : `Add New: "${assignWeaverSearch}"`}
                       </div>
                     )}
                     {!assignWeaverSearch.trim() && weavers.length === 0 && (
-                      <div className="p-3 text-gray-400 text-sm text-center">
-                        {language === 'ta' ? 'தறிக்காரர்கள் இல்லை' : 'No weavers found'}
+                      <div className="p-6 text-gray-400 text-sm text-center flex flex-col items-center gap-2">
+                        <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center mb-1">
+                          <UserIcon size={18} />
+                        </div>
+                        <p className="font-bold">{language === 'ta' ? 'தறிக்காரர்கள் இல்லை' : 'No weavers found'}</p>
+                        <p className="text-[10px] opacity-60 uppercase tracking-widest leading-tight">{language === 'ta' ? 'பெயரைத் தட்டச்சு செய்யவும்' : 'Type name to add'}</p>
                       </div>
                     )}
                   </div>
                 )}
               </div>
 
-              <select 
-                value={assignLoomId}
-                onChange={e => setAssignLoomId(e.target.value)}
-                className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm outline-none focus:border-zinc-400 font-bold"
-                disabled={!assignWeaverId && !assignWeaverSearch.trim()}
-              >
-                <option value="">{language === 'ta' ? '-- தறியை தேர்ந்தெடுக்கவும் (விருப்பப்பட்டால்) --' : '-- Select Loom (Optional) --'}</option>
-                {looms.filter(l => l.weaverId === assignWeaverId).map(l => (
-                  <option key={l.id} value={l.id}>{language === 'ta' ? 'தறி' : 'Loom'} {l.loomNumber} {l.designName ? `- ${l.designName}` : ''}</option>
-                ))}
-                <option value="ADD_NEW" className="text-zinc-600 font-black">+ {language === 'ta' ? 'புதிய தறி' : 'Add New Loom'}</option>
-              </select>
+              {/* Loom Selection */}
+              <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                  {language === 'ta' ? 'தறி' : 'Loom'}
+                </label>
+                <select 
+                  value={assignLoomId}
+                  onChange={e => setAssignLoomId(e.target.value)}
+                  className="w-full p-5 bg-gray-50 border border-gray-100 rounded-[2.2rem] text-sm outline-none focus:border-zinc-400 font-bold transition-all appearance-none cursor-pointer shadow-inner"
+                  disabled={!assignWeaverId && !assignWeaverSearch.trim()}
+                >
+                  <option value="">{language === 'ta' ? '-- தறியை தேர்ந்தெடுக்கலாம் --' : '-- Select Loom --'}</option>
+                  {looms.filter(l => l.weaverId === assignWeaverId).map(l => (
+                    <option key={l.id} value={l.id}>
+                      {language === 'ta' ? 'தறி' : 'Loom'} {l.loomNumber} {l.designName ? `- ${l.designName}` : ''}
+                    </option>
+                  ))}
+                  <option value="ADD_NEW" className="text-zinc-600 font-black">+ {language === 'ta' ? 'புதிய தறி' : 'Add New Loom'}</option>
+                </select>
+              </div>
 
+              {/* New Loom Fields */}
               {assignLoomId === 'ADD_NEW' && (
-                <div className="flex gap-3 mt-3 animate-in fade-in slide-in-from-top-2">
-                  <select
-                    value={newLoomNumber}
-                    onChange={(e) => setNewLoomNumber(e.target.value)}
-                    className="flex-1 p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm outline-none focus:border-zinc-400 font-bold"
-                  >
-                    <option value="" disabled>{language === 'ta' ? 'எண்' : 'Number'}</option>
-                    {Array.from({ length: 20 }, (_, i) => i + 1).map(num => (
-                      <option key={num} value={num}>{num}</option>
-                    ))}
-                  </select>
+                <div className="flex gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                      {language === 'ta' ? 'எண்' : 'Number'}
+                    </label>
+                    <select
+                      value={newLoomNumber}
+                      onChange={(e) => setNewLoomNumber(e.target.value)}
+                      className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm outline-none focus:border-zinc-400 font-bold shadow-inner"
+                    >
+                      {Array.from({ length: 20 }, (_, i) => i + 1).map(num => (
+                        <option key={num} value={num}>{num}</option>
+                      ))}
+                    </select>
+                  </div>
                   
-                  <select
-                    value={newLoomBreak}
-                    onChange={(e) => setNewLoomBreak(e.target.value)}
-                    className="flex-1 p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm outline-none focus:border-zinc-400 font-bold"
-                  >
-                    <option value="Right Break">{language === 'ta' ? 'ரைட் பிரேக்' : 'Right Break'}</option>
-                    <option value="Left Break">{language === 'ta' ? 'லெஃப்ட் பிரேக்' : 'Left Break'}</option>
-                  </select>
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                      {language === 'ta' ? 'திசை' : 'Break'}
+                    </label>
+                    <select
+                      value={newLoomBreak}
+                      onChange={(e) => setNewLoomBreak(e.target.value)}
+                      className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm outline-none focus:border-zinc-400 font-bold shadow-inner"
+                    >
+                      <option value="Right Break">{language === 'ta' ? 'ரைட்' : 'Right'}</option>
+                      <option value="Left Break">{language === 'ta' ? 'லெஃப்ட்' : 'Left'}</option>
+                    </select>
+                  </div>
                 </div>
               )}
             </div>
             
-            <div className="flex gap-3">
+            <div className="flex gap-4">
               <button 
                 onClick={() => {
                   setIsAssigningOrder(null);
@@ -2324,13 +2886,14 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                   setNewLoomNumber('1');
                   setNewLoomBreak('Right Break');
                 }} 
-                className="flex-1 py-4 bg-gray-100 text-gray-700 rounded-2xl font-bold text-sm"
+                className="flex-1 py-5 bg-gray-100 text-gray-600 rounded-[2rem] font-black text-sm active:scale-95 transition-all"
               >
                 {language === 'ta' ? 'ரத்து' : 'Cancel'}
               </button>
               <button 
                 onClick={handleAssignOrder} 
-                className={`flex-1 py-4 ${buttonColor} text-white rounded-2xl font-bold text-sm shadow-lg shadow-zinc-200`}
+                disabled={!assignWeaverSearch.trim()}
+                className={`flex-1 py-5 ${buttonColor} text-white rounded-[2rem] font-black text-sm shadow-xl shadow-zinc-200 active:scale-95 transition-all disabled:opacity-50 disabled:shadow-none translate-y-[-1px]`}
               >
                 {language === 'ta' ? 'மாற்று' : 'Assign'}
               </button>
@@ -2342,7 +2905,35 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
       {isCreatingOrder && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto">
-            <h3 className="font-black text-gray-800 mb-6 text-xl tamil-font">{language === 'ta' ? 'புதிய வார்ப்பு ஆர்டர்' : 'New Warp Order'}</h3>
+            <h3 className="font-black text-gray-800 mb-6 text-xl tamil-font">
+              {activeOrderType === 'warp' ? (language === 'ta' ? 'புதிய வார்ப்பு ஆர்டர்' : 'New Warp Order') :
+               activeOrderType === 'bobbin' ? (language === 'ta' ? 'புதிய பாபின் ஆர்டர்' : 'New Bobbin Order') :
+               (language === 'ta' ? 'புதிய மேல் வார்ப்பு ஆர்டர்' : 'New Top Warp Order')}
+            </h3>
+
+            {warpDesigns.length > 0 && activeOrderType === 'warp' && (
+              <div className="mb-6 p-4 bg-zinc-50 rounded-[1.5rem] border border-zinc-100 animate-in fade-in duration-500">
+                <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2 ml-1">
+                  {language === 'ta' ? 'டிசைன் அமைப்புகள்' : 'Design Template'}
+                </label>
+                <select 
+                  className="w-full p-4 bg-white border border-zinc-100 rounded-2xl text-sm font-black outline-none focus:border-zinc-400 shadow-sm appearance-none cursor-pointer"
+                  onChange={(e) => {
+                    const design = warpDesigns.find(d => d.id === e.target.value);
+                    if (design) {
+                       setOrderDesignName(design.designName);
+                       setOrderSections(JSON.parse(JSON.stringify(design.sections)));
+                       setOrderWarpLength(design.warpLengthMeters?.toString() || '1000');
+                    }
+                  }}
+                >
+                  <option value="">-- {language === 'ta' ? 'டிசைனை தேர்ந்தெடுக்கவும்' : 'Select Design Template'} --</option>
+                  {warpDesigns.map(d => (
+                    <option key={d.id} value={d.id}>{d.designName}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             
             <div className="space-y-4 mb-6">
               <input 
@@ -2354,7 +2945,11 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
               />
               
               <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                <p className="text-xs font-bold text-gray-500 mb-3">{language === 'ta' ? 'வார்ப்பு அமைப்பு' : 'Warp Structure'}</p>
+                <p className="text-xs font-bold text-gray-500 mb-3">
+                  {activeOrderType === 'warp' ? (language === 'ta' ? 'வார்ப்பு அமைப்பு' : 'Warp Structure') :
+                   activeOrderType === 'bobbin' ? (language === 'ta' ? 'பாபின் அமைப்பு' : 'Bobbin Structure') :
+                   (language === 'ta' ? 'மேல் வார்ப்பு அமைப்பு' : 'Top Warp Structure')}
+                </p>
                 <div className="space-y-2">
                   {orderSections.map((section, index) => (
                     <div key={index} className="flex gap-2 items-center bg-white p-2 rounded-xl border border-gray-100 flex-wrap sm:flex-nowrap">
@@ -2432,7 +3027,9 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                 />
                 <input 
                   type="number" 
-                  placeholder={language === 'ta' ? 'வார்ப்பு (மீட்டர்)' : 'Warp Length (m)'}
+                  placeholder={activeOrderType === 'warp' ? (language === 'ta' ? 'வார்ப்பு (மீட்டர்)' : 'Warp Length (m)') :
+                               activeOrderType === 'bobbin' ? (language === 'ta' ? 'பாபின் (மீட்டர்)' : 'Bobbin Length (m)') :
+                               (language === 'ta' ? 'மேல் வார்ப்பு (மீட்டர்)' : 'Top Warp Length (m)')}
                   value={orderWarpLength}
                   onChange={e => setOrderWarpLength(e.target.value)}
                   className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm outline-none focus:border-zinc-400 font-bold"
@@ -2918,6 +3515,8 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
         </div>
       )}
 
+          </div>
+        )}
       </div>
     );
   }
@@ -2926,26 +3525,21 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
   return (
     <div className="p-4 pb-24 md:pb-4 md:max-w-none mx-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
       {viewType !== 'all-warps' && (
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-black tamil-font text-gray-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div>
+            <h2 className="text-2xl font-black tamil-font text-gray-800 tracking-tight">
               {language === 'ta' ? 'வார்ப்பு கணக்குகள்' : 'Warp Accounts'}
             </h2>
+            <p className="text-gray-400 text-sm font-bold mt-1">
+              {language === 'ta' ? `${warpers.length} கடைகள் இணைக்கப்பட்டுள்ளன` : `${warpers.length} shops connected`}
+            </p>
           </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setViewType('all-warps')}
-              className="bg-zinc-100 text-zinc-600 px-3 py-2 rounded-full text-xs font-bold flex items-center gap-1 shadow-sm transition"
-            >
-              <FileText size={14} /> {language === 'ta' ? 'அனைத்து வார்ப்புகள்' : 'All Warps'}
-            </button>
-            <button 
-              onClick={() => setIsAdding(true)}
-              className={`${buttonColor} text-white px-3 py-2 rounded-full text-xs font-bold flex items-center gap-1 shadow-md transition`}
-            >
-              <Plus size={14} /> {language === 'ta' ? 'புதிய கடையை சேர்+' : 'Add New Shop+'}
-            </button>
-          </div>
+          <button 
+            onClick={() => setIsAdding(true)}
+            className="bg-indigo-600 text-white px-6 py-3 rounded-2xl text-sm font-black flex items-center justify-center gap-2 shadow-lg shadow-indigo-100 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 hover:bg-indigo-700"
+          >
+            <Plus size={18} strokeWidth={3} /> {language === 'ta' ? 'புதிய கடையை சேர்' : 'Add New Shop'}
+          </button>
         </div>
       )}
 
@@ -2967,10 +3561,10 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
             className="w-full p-4 bg-gray-50 rounded-2xl mb-5 outline-none border border-gray-200 focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 transition font-medium"
           />
           <div className="flex gap-3">
-            <button onClick={handleAdd} className={`flex-1 ${buttonColor} text-white py-3.5 rounded-2xl font-black shadow-md shadow-zinc-200 hover:shadow-lg transition`}>
+            <button onClick={handleAdd} className="flex-1 bg-indigo-600 text-white py-3.5 rounded-2xl font-black shadow-md shadow-indigo-100 hover:shadow-lg transition hover:bg-indigo-700">
               {language === 'ta' ? 'சேமி' : 'Save'}
             </button>
-            <button onClick={() => setIsAdding(false)} className="flex-1 bg-gray-100 text-gray-600 py-3.5 rounded-2xl font-black hover:bg-gray-200 transition">
+            <button onClick={() => setIsAdding(false)} className="flex-1 bg-zinc-100 text-zinc-600 py-3.5 rounded-2xl font-black hover:bg-zinc-200 transition">
               {language === 'ta' ? 'ரத்து' : 'Cancel'}
             </button>
           </div>
@@ -2990,42 +3584,73 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {warpers.map((warper, index) => {
-            const WARPER_COLORS = [
-              'bg-blue-600 hover:bg-blue-700',
-              'bg-emerald-600 hover:bg-emerald-700',
-              'bg-purple-600 hover:bg-purple-700',
-              'bg-amber-600 hover:bg-amber-700',
-              'bg-rose-600 hover:bg-rose-700',
-              'bg-cyan-600 hover:bg-cyan-700',
-              'bg-indigo-600 hover:bg-indigo-700',
-              'bg-teal-600 hover:bg-teal-700',
+            const COLORS = [
+              { bg: 'bg-blue-50', text: 'text-blue-600' },
+              { bg: 'bg-emerald-50', text: 'text-emerald-600' },
+              { bg: 'bg-purple-50', text: 'text-purple-600' },
+              { bg: 'bg-amber-50', text: 'text-amber-600' },
+              { bg: 'bg-rose-50', text: 'text-rose-600' },
+              { bg: 'bg-cyan-50', text: 'text-cyan-600' },
+              { bg: 'bg-indigo-50', text: 'text-indigo-600' },
+              { bg: 'bg-teal-50', text: 'text-teal-600' },
             ];
-            const colorClass = WARPER_COLORS[index % WARPER_COLORS.length];
+            const colorSet = COLORS[index % COLORS.length];
+            const orderCount = warpOrders.filter(o => o.warperId === warper.id).length;
+            
             return (
-            <div 
-              key={warper.id} 
-              onClick={() => { setSelectedWarper(warper); setLedgerPage(1); setStatementPage(1); }}
-              className={`${colorClass} p-4 rounded-2xl shadow-sm flex items-center justify-between transition cursor-pointer`}
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white/20 text-white rounded-full flex items-center justify-center font-black text-xl shadow-inner">
-                  {warper.name.charAt(0).toUpperCase()}
+              <div 
+                key={warper.id} 
+                onClick={() => { setSelectedWarper(warper); setLedgerPage(1); setStatementPage(1); setViewType('menu'); }}
+                className="group bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-2xl hover:shadow-zinc-200/60 hover:border-zinc-200 transition-all duration-500 cursor-pointer flex flex-col h-full relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleDelete(warper.id); }} 
+                    className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all duration-200"
+                    title={language === 'ta' ? 'நீக்கு' : 'Delete'}
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
-                <div>
-                  <h4 className="font-black text-white text-lg">{warper.name}</h4>
-                  {warper.phone && <p className="text-xs font-bold text-white/80 mt-0.5">{warper.phone}</p>}
+
+                <div className="flex flex-col items-center text-center mb-6 pt-4">
+                  <div className={`w-20 h-20 ${colorSet.bg} ${colorSet.text} rounded-3xl flex items-center justify-center font-black text-3xl mb-4 transition-all duration-500 group-hover:scale-110 group-hover:rotate-3 shadow-inner`}>
+                    {warper.name.charAt(0).toUpperCase()}
+                  </div>
+                  <h4 className="font-black text-gray-800 text-xl leading-tight group-hover:text-zinc-900 transition-colors px-2 line-clamp-2">
+                    {warper.name}
+                  </h4>
+                  {warper.phone ? (
+                    <div className="flex items-center gap-1.5 text-gray-400 mt-2">
+                      <Phone size={12} className="opacity-70" />
+                      <span className="text-xs font-bold">{warper.phone}</span>
+                    </div>
+                  ) : (
+                    <div className="h-5 mt-2" />
+                  )}
+                </div>
+
+                <div className="flex-1" />
+
+                <div className="mt-auto pt-6 border-t border-gray-50 flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-1">
+                      {language === 'ta' ? 'ஆர்டர்கள்' : 'STATISTICS'}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <FileText size={12} className="text-gray-400" />
+                      <span className="text-sm font-black text-gray-700">{orderCount} {language === 'ta' ? 'ஆர்டர்கள்' : 'Orders'}</span>
+                    </div>
+                  </div>
+                  <div className={`w-10 h-10 rounded-2xl ${colorSet.bg} ${colorSet.text} flex items-center justify-center transition-all duration-500 group-hover:bg-zinc-800 group-hover:text-white shadow-sm`}>
+                    <ChevronRight size={20} strokeWidth={3} />
+                  </div>
                 </div>
               </div>
-              <button 
-                onClick={(e) => { e.stopPropagation(); handleDelete(warper.id); }} 
-                className="p-2.5 text-white/70 hover:text-white hover:bg-white/20 rounded-full transition"
-              >
-                <Trash2 size={20} />
-              </button>
-            </div>
-          )})}
+            )
+          })}
         </div>
       )}
       {isScanning && (

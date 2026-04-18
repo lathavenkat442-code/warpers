@@ -74,6 +74,10 @@ export const TRANSLATIONS = {
     addDispatch: 'நூல் செலவு சேர்',
     addReturn: 'வார்ப்பு வரவு சேர்',
     createWarpOrder: 'வார்ப்பு ஆர்டர் உருவாக்கு',
+    bobbinOrder: 'பாபின் ஆர்டர்',
+    topWarpOrder: 'மேல் வார்ப்பு ஆர்டர்',
+    createBobbinOrder: 'பாபின் ஆர்டர் உருவாக்கு',
+    createTopWarpOrder: 'மேல் வார்ப்பு ஆர்டர் உருவாக்கு',
     manageFormulas: 'சூத்திரங்களை நிர்வகி',
     date: 'தேதி',
     weightKg: 'எடை (kg)',
@@ -235,6 +239,10 @@ export const TRANSLATIONS = {
     addDispatch: 'Add Dispatch',
     addReturn: 'Add Return',
     createWarpOrder: 'Create Warp Order',
+    bobbinOrder: 'Bobbin Order',
+    topWarpOrder: 'Top Warp Order',
+    createBobbinOrder: 'Create Bobbin Order',
+    createTopWarpOrder: 'Create Top Warp Order',
     manageFormulas: 'Manage Formulas',
     date: 'Date',
     weightKg: 'Weight (kg)',
@@ -369,9 +377,9 @@ export const PREDEFINED_COLORS = [
 ];
 
 export const YARN_TYPES = [
-  '50d', '80d', '75d', '68d', '34d', '30kota', 'multi kota', '110d', '150d', 'Half Fine Zari', 'Tested Zari', 'Imitation Zari', '30 டோப் கோட்டா', '30 டய்டு கோட்டா', '34D&68D', '30kota dope', '30d dyed kota', 'Copper zari', 'Silver zari', 'Gold zari', 'Pink copper zari'
+  '50d', '80d', '75d', '68d', '34d', '30kota', 'multi kota', '110d', '150d', 'Half Fine Zari', 'Tested Zari', 'Imitation Zari', '30 டோப் கோட்டா', '30 டய்டு கோட்டா', '34D&68D', '30kota dope', '30d dyed kota', 'Copper zari', 'Silver zari', 'Gold zari', 'Pink copper zari', 'ஜரிகை'
 ];
 
 export const YARN_COLORS = [
-  'red', 'black', 'rani', 'b.green', 'green', 'rexona', 'sumathi', 'tusser', 'cream', 'babha', 'gold', 'pink', 'violet', 'வெள்ளை', 'காப்பர்', 'ஆர் ப்ளூ', 'மெரூன்', 'நாகப்பழம்'
+  'red', 'black', 'rani', 'b.green', 'green', 'rexona', 'sumathi', 'tusser', 'cream', 'babha', 'gold', 'pink', 'violet', 'வெள்ளை', 'காப்பர்', 'ஆர் ப்ளூ', 'மெரூன்', 'நாகப்பழம்', 'லெமன்', 'சில்வர்', 'பிங்க் காப்பர்'
 ];

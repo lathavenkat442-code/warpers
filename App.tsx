@@ -4,9 +4,9 @@ import { User } from './types';
 import { TRANSLATIONS } from './constants';
 import Profile from './components/Profile';
 import Warpers from './components/Warpers';
-import { supabase, isSupabaseConfigured, saveSupabaseConfig } from './supabaseClient';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { 
-  X, Database, Loader2, CheckCircle2, AlertTriangle, Sun, Moon, Package, User as UserIcon, RefreshCw
+  X, Loader2, CheckCircle2, AlertTriangle, Sun, Moon, Package, User as UserIcon, RefreshCw
 } from 'lucide-react';
 
 const Toast: React.FC<{ message: string; show: boolean; onClose: () => void; isError?: boolean }> = ({ message, show, onClose, isError }) => {
@@ -27,77 +27,6 @@ const Toast: React.FC<{ message: string; show: boolean; onClose: () => void; isE
     );
 };
 
-const DatabaseConfigModal: React.FC<{ onClose: () => void; language: 'ta' | 'en'; buttonColor?: string }> = ({ onClose, language, buttonColor = 'bg-zinc-600 hover:bg-zinc-700' }) => {
-    const t = TRANSLATIONS[language];
-    const [setupUrl, setSetupUrl] = useState(localStorage.getItem('warper_supabase_url') || '');
-    const [setupKey, setSetupKey] = useState(localStorage.getItem('warper_supabase_key') || '');
-    const [showSql, setShowSql] = useState(false);
-
-    const handleSaveConfig = (e: React.FormEvent) => {
-        e.preventDefault();
-        saveSupabaseConfig(setupUrl, setupKey);
-    };
-
-    const sqlScript = `create table user_app_data (
-  user_id uuid references auth.users not null primary key,
-  warpers jsonb default '[]',
-  dispatches jsonb default '[]',
-  returns jsonb default '[]',
-  warp_orders jsonb default '[]',
-  weavers jsonb default '[]',
-  looms jsonb default '[]',
-  suppliers jsonb default '[]',
-  denier_formulas jsonb default '[]',
-  loom_txns jsonb default '[]',
-  updated_at timestamp with time zone default timezone('utc'::text, now())
-);
-
-alter table user_app_data enable row level security;
-
-create policy "Users can view own app data." on user_app_data for select using ( auth.uid() = user_id );
-create policy "Users can insert own app data." on user_app_data for insert with check ( auth.uid() = user_id );
-create policy "Users can update own app data." on user_app_data for update using ( auth.uid() = user_id );`;
-
-    return (
-        <div className="fixed inset-0 bg-black/70 z-[70] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
-             <div className="bg-white w-full max-w-md rounded-[2rem] p-6 shadow-2xl relative my-8">
-                <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200"><X size={20} /></button>
-                <div className="text-center mb-6">
-                    <Database size={48} className="mx-auto text-zinc-600 mb-2"/>
-                    <h2 className="text-xl font-black text-gray-800 tamil-font">{t.setupCloudDatabase}</h2>
-                </div>
-                <form onSubmit={handleSaveConfig} className="space-y-4 mb-4">
-                    <input value={setupUrl} onChange={e => setSetupUrl(e.target.value)} className="w-full bg-gray-100 p-3 rounded-xl font-mono text-sm border outline-none" placeholder="Supabase URL" required />
-                    <input value={setupKey} onChange={e => setSetupKey(e.target.value)} className="w-full bg-gray-100 p-3 rounded-xl font-mono text-sm border outline-none" placeholder="Anon Key" required />
-                    <button type="submit" className={`w-full ${buttonColor} text-white p-3 rounded-xl font-bold shadow-lg`}>{t.saveAndConnect}</button>
-                </form>
-                
-                <div className="mt-6 pt-4 border-t border-gray-100">
-                  <button onClick={() => setShowSql(!showSql)} className="text-sm font-bold text-blue-600 hover:underline w-full text-left">
-                    {language === 'ta' ? 'SQL டேபிள் உருவாக்கும் கோட் (முக்கியம்)' : 'SQL Table Creation Code (Required)'}
-                  </button>
-                  {showSql && (
-                    <div className="mt-3">
-                      <p className="text-xs text-gray-500 mb-2">
-                        {language === 'ta' ? 'Supabase SQL Editor-ல் இதை காப்பி செய்து ரன் செய்யவும்:' : 'Copy and run this in Supabase SQL Editor:'}
-                      </p>
-                      <div className="relative">
-                        <textarea readOnly value={sqlScript} className="w-full h-40 bg-gray-900 text-green-400 p-3 rounded-xl font-mono text-xs outline-none resize-none" />
-                        <button 
-                          onClick={() => { navigator.clipboard.writeText(sqlScript); alert(language === 'ta' ? 'காப்பி செய்யப்பட்டது!' : 'Copied!'); }}
-                          className="absolute top-2 right-2 bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded text-xs"
-                        >
-                          Copy
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-             </div>
-        </div>
-    );
-};
-
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'warpers' | 'profile'>('warpers');
   const GUEST_USER: User = useMemo(() => ({ uid: '', email: 'guest@warper.local', name: 'Guest', isLoggedIn: false }), []);
@@ -110,7 +39,6 @@ const App: React.FC = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showDatabaseConfig, setShowDatabaseConfig] = useState(false);
   const [isLoading] = useState(false);
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [customAppName, setCustomAppName] = useState(() => localStorage.getItem('warper_custom_app_name') || '');
@@ -216,11 +144,23 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline = () => {
+        setIsOnline(true);
+        if (user.uid) {
+            setToast({ msg: language === 'ta' ? 'ஆன்லைன் இணைக்கப்பட்டது' : 'Online Connected', show: true });
+        }
+    };
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [user.uid, language]);
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser({ 
@@ -259,8 +199,6 @@ const App: React.FC = () => {
 
     return () => {
       clearTimeout(safetyTimeout);
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
     };
   }, [GUEST_USER]);
 
@@ -303,13 +241,13 @@ const App: React.FC = () => {
           <h1 className="text-2xl font-black tamil-font truncate text-white tracking-tight">{customAppName || t.appName}</h1>
         </div>
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto hide-scrollbar">
-          <button onClick={() => setActiveTab('warpers')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${activeTab === 'warpers' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'}`}>
+          <button onClick={() => setActiveTab('warpers')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all duration-300 ${activeTab === 'warpers' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/20 active:scale-95' : 'text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-200'}`}>
             <Package size={18} />
             <span className="text-sm tracking-wide">{t.warpers}</span>
           </button>
         </nav>
         <div className="p-4 border-t border-zinc-800">
-          <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${activeTab === 'profile' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'}`}>
+          <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all duration-300 ${activeTab === 'profile' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20 active:scale-95' : 'text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-200'}`}>
             <UserIcon size={18} />
             <span className="text-sm tracking-wide">{t.profile}</span>
           </button>
@@ -379,7 +317,7 @@ const App: React.FC = () => {
                 localStorage.removeItem('warper_active_user'); 
                 sessionStorage.clear();
                 window.location.reload(); 
-            }} onLoginClick={() => setShowAuthModal(true)} onRestore={() => {}} language={language} onLanguageChange={(l) => { setLanguage(l); localStorage.setItem('warper_lang', l); }} onResetApp={() => {}} onSetupServer={() => setShowDatabaseConfig(true)} customAppName={customAppName} setCustomAppName={(name) => {
+            }} onLoginClick={() => setShowAuthModal(true)} onRestore={() => {}} language={language} onLanguageChange={(l) => { setLanguage(l); localStorage.setItem('warper_lang', l); }} onResetApp={() => {}} customAppName={customAppName} setCustomAppName={(name) => {
                 setCustomAppName(name);
                 localStorage.setItem('warper_custom_app_name', name);
             }} themeColor={themeColor} onThemeChange={handleThemeChange} buttonColor={buttonColor} onButtonColorChange={handleButtonColorChange} onBack={() => setActiveTab('warpers')} showInstallBtn={showInstallBtn} onInstall={handleInstallClick} />}
@@ -387,24 +325,23 @@ const App: React.FC = () => {
         </main>
 
         {/* Mobile Bottom Navigation */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-200 flex justify-around items-center p-2 z-50 pb-safe-area">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-zinc-100 flex justify-around items-center p-2 z-50 pb-safe-area shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
           <button 
             onClick={() => setActiveTab('warpers')} 
-            className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'warpers' ? 'text-zinc-900' : 'text-zinc-400'}`}
+            className={`flex flex-col items-center gap-1 p-2 px-6 rounded-2xl transition-all duration-300 ${activeTab === 'warpers' ? 'text-indigo-600 bg-indigo-50' : 'text-zinc-400'}`}
           >
-            <Package size={24} className={activeTab === 'warpers' ? 'scale-110' : ''} />
-            <span className="text-[10px] font-bold tamil-font">{t.warpers}</span>
+            <Package size={22} className={activeTab === 'warpers' ? 'scale-110' : ''} />
+            <span className="text-[10px] font-black tamil-font">{t.warpers}</span>
           </button>
           <button 
             onClick={() => setActiveTab('profile')} 
-            className={`flex flex-col items-center gap-1 p-2 transition-all ${activeTab === 'profile' ? 'text-zinc-900' : 'text-zinc-400'}`}
+            className={`flex flex-col items-center gap-1 p-2 px-6 rounded-2xl transition-all duration-300 ${activeTab === 'profile' ? 'text-emerald-600 bg-emerald-50' : 'text-zinc-400'}`}
           >
-            <UserIcon size={24} className={activeTab === 'profile' ? 'scale-110' : ''} />
-            <span className="text-[10px] font-bold tamil-font">{t.profile}</span>
+            <UserIcon size={22} className={activeTab === 'profile' ? 'scale-110' : ''} />
+            <span className="text-[10px] font-black tamil-font">{t.profile}</span>
           </button>
         </nav>
       </div>
-      {showDatabaseConfig && <DatabaseConfigModal onClose={() => setShowDatabaseConfig(false)} language={language} buttonColor={buttonColor} />}
       {isLoading && <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-[110] backdrop-blur-[1px]"><div className="bg-white p-6 rounded-3xl shadow-2xl flex flex-col items-center gap-4 animate-in zoom-in duration-300"><Loader2 className="animate-spin text-zinc-600" size={40}/><p className="font-black text-gray-800 tamil-font">{t.saving}</p></div></div>}
       {showAuthModal && (
           <div className="fixed inset-0 bg-black/60 z-[120] flex items-center justify-center p-4 backdrop-blur-sm auth-modal">
