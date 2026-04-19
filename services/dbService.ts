@@ -1,7 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 
 export const syncColumnToSupabase = async (userId: string, column: string, data: any) => {
-  if (!isSupabaseConfigured || !userId || userId === 'guest') return;
+  if (!isSupabaseConfigured || !userId || userId === 'guest') return { success: false, error: 'Not configured or guest' };
   
   try {
     const { error } = await supabase
@@ -12,9 +12,14 @@ export const syncColumnToSupabase = async (userId: string, column: string, data:
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id' });
       
-    if (error) throw error;
-  } catch (err) {
-    console.error(`Error syncing ${column} to Supabase:`, err);
+    if (error) {
+      console.error(`Supabase sync error for ${column}:`, error);
+      return { success: false, error };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error(`Catch: Error syncing ${column} to Supabase:`, err);
+    return { success: false, error: err.message };
   }
 };
 

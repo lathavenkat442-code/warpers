@@ -217,41 +217,59 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
     }
   }, [setToast]);
 
-  const saveWarpers = useCallback((newWarpers: Warper[]) => {
+  const saveWarpers = useCallback(async (newWarpers: Warper[]) => {
     setWarpers(newWarpers);
     localStorage.setItem(`viyabaari_warpers_${user.uid || 'guest'}`, JSON.stringify(newWarpers));
-    syncColumnToSupabase(user.uid, 'warpers', newWarpers);
-  }, [user.uid]);
+    const result = await syncColumnToSupabase(user.uid, 'warpers', newWarpers);
+    if (result && !result.success && user.uid && user.uid !== 'guest') {
+      showToast(language === 'ta' ? 'சர்வரில் சேமிப்பதில் சிக்கல் - டேபிள் செட்டிங்ஸ் சரிபார்க்கவும்' : 'Error syncing to Server - Check table settings', 'error');
+    }
+  }, [user.uid, language, showToast]);
 
-  const saveReturns = useCallback((newReturns: WarperReturn[]) => {
+  const saveReturns = useCallback(async (newReturns: WarperReturn[]) => {
     setReturns(newReturns);
     localStorage.setItem(`viyabaari_warper_returns_${user.uid || 'guest'}`, JSON.stringify(newReturns));
-    syncColumnToSupabase(user.uid, 'returns', newReturns);
-  }, [user.uid]);
+    const result = await syncColumnToSupabase(user.uid, 'returns', newReturns);
+    if (result && !result.success && user.uid && user.uid !== 'guest') {
+      showToast(language === 'ta' ? 'சர்வரில் சேமிப்பதில் சிக்கல்' : 'Error syncing to Server', 'error');
+    }
+  }, [user.uid, language, showToast]);
 
-  const saveDispatches = useCallback((newDispatches: YarnDispatch[]) => {
+  const saveDispatches = useCallback(async (newDispatches: YarnDispatch[]) => {
     setDispatches(newDispatches);
     localStorage.setItem(`viyabaari_yarn_dispatches_${user.uid || 'guest'}`, JSON.stringify(newDispatches));
-    syncColumnToSupabase(user.uid, 'dispatches', newDispatches);
-  }, [user.uid]);
+    const result = await syncColumnToSupabase(user.uid, 'dispatches', newDispatches);
+    if (result && !result.success && user.uid && user.uid !== 'guest') {
+      showToast(language === 'ta' ? 'சர்வரில் சேமிப்பதில் சிக்கல்' : 'Error syncing to Server', 'error');
+    }
+  }, [user.uid, language, showToast]);
 
-  const saveFormulas = useCallback((newFormulas: DenierFormula[]) => {
+  const saveFormulas = useCallback(async (newFormulas: DenierFormula[]) => {
     setDenierFormulas(newFormulas);
     localStorage.setItem(`viyabaari_denier_formulas_${user.uid || 'guest'}`, JSON.stringify(newFormulas));
-    syncColumnToSupabase(user.uid, 'denier_formulas', newFormulas);
-  }, [user.uid]);
+    const result = await syncColumnToSupabase(user.uid, 'denier_formulas', newFormulas);
+    if (result && !result.success && user.uid && user.uid !== 'guest') {
+      showToast(language === 'ta' ? 'சர்வரில் சேமிப்பதில் சிக்கல்' : 'Error syncing to Server', 'error');
+    }
+  }, [user.uid, language, showToast]);
 
-  const saveWarpOrders = useCallback((newOrders: WarpOrder[]) => {
+  const saveWarpOrders = useCallback(async (newOrders: WarpOrder[]) => {
     setWarpOrders(newOrders);
     localStorage.setItem(`viyabaari_warp_orders_${user.uid || 'guest'}`, JSON.stringify(newOrders));
-    syncColumnToSupabase(user.uid, 'warp_orders', newOrders);
-  }, [user.uid]);
+    const result = await syncColumnToSupabase(user.uid, 'warp_orders', newOrders);
+    if (result && !result.success && user.uid && user.uid !== 'guest') {
+      showToast(language === 'ta' ? 'சர்வரில் சேமிப்பதில் சிக்கல்' : 'Error syncing to Server', 'error');
+    }
+  }, [user.uid, language, showToast]);
 
-  const saveWarpDesigns = useCallback((newDesigns: WarpDesign[]) => {
+  const saveWarpDesigns = useCallback(async (newDesigns: WarpDesign[]) => {
     setWarpDesigns(newDesigns);
     localStorage.setItem(`viyabaari_warp_designs_${user.uid || 'guest'}`, JSON.stringify(newDesigns));
-    syncColumnToSupabase(user.uid, 'warp_designs', newDesigns);
-  }, [user.uid]);
+    const result = await syncColumnToSupabase(user.uid, 'warp_designs', newDesigns);
+    if (result && !result.success && user.uid && user.uid !== 'guest') {
+      showToast(language === 'ta' ? 'டிசைன்ஸ் சர்வரில் சேமிக்கப்படவில்லை - warp_designs காலம் உங்கள் டேபிளில் உள்ளதா என சரிபார்க்கவும்' : 'Designs not saved online - Check if warp_designs column exists in Supabase', 'error');
+    }
+  }, [user.uid, language, showToast]);
 
   const handleAdd = useCallback(() => {
     if (!newName.trim()) return;
