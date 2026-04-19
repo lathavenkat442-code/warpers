@@ -2445,7 +2445,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
               </button>
             </div>
 
-            {warpDesigns.length === 0 ? (
+            {warpDesigns.filter(d => !d.warperId || d.warperId === selectedWarper.id).length === 0 ? (
               <div className="text-center py-16 bg-white rounded-[2.5rem] border border-dashed border-gray-200 shadow-sm animate-in fade-in zoom-in">
                 <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
                   <ClipboardList size={32} className="text-gray-300" />
@@ -2459,7 +2459,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4">
-                {warpDesigns.map(design => (
+                {warpDesigns.filter(d => !d.warperId || d.warperId === selectedWarper.id).map(design => (
                   <div key={design.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 hover:shadow-md transition group relative overflow-hidden">
                     <div className="flex justify-between items-start mb-4 relative z-10">
                       <div className="flex items-center gap-4">
@@ -2682,6 +2682,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                   id: editingDesign ? editingDesign.id : timestamp.toString(),
                   designName: orderDesignName,
                   sections: JSON.parse(JSON.stringify(orderSections)),
+                  warperId: selectedWarper.id,
                   warpLengthMeters: parseFloat(orderWarpLength) || 1000,
                   createdAt: editingDesign ? editingDesign.createdAt : timestamp
                 };
@@ -2911,7 +2912,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                (language === 'ta' ? 'புதிய மேல் வார்ப்பு ஆர்டர்' : 'New Top Warp Order')}
             </h3>
 
-            {warpDesigns.length > 0 && activeOrderType === 'warp' && (
+            {warpDesigns.filter(d => !d.warperId || d.warperId === selectedWarper.id).length > 0 && activeOrderType === 'warp' && (
               <div className="mb-6 p-4 bg-zinc-50 rounded-[1.5rem] border border-zinc-100 animate-in fade-in duration-500">
                 <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2 ml-1">
                   {language === 'ta' ? 'டிசைன் அமைப்புகள்' : 'Design Template'}
@@ -2928,7 +2929,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                   }}
                 >
                   <option value="">-- {language === 'ta' ? 'டிசைனை தேர்ந்தெடுக்கவும்' : 'Select Design Template'} --</option>
-                  {warpDesigns.map(d => (
+                  {warpDesigns.filter(d => !d.warperId || d.warperId === selectedWarper.id).map(d => (
                     <option key={d.id} value={d.id}>{d.designName}</option>
                   ))}
                 </select>

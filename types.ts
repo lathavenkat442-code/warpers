@@ -128,6 +128,7 @@ export interface WarpDesign {
   id: string;
   designName: string;
   sections: WarpSection[];
+  warperId?: string;
   warpYarnType?: string;
   weftYarnType?: string;
   totalSareesExpected?: number;
