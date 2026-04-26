@@ -1079,7 +1079,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
     const balance = totalReceived - totalReturned;
 
     return (
-      <div className="bg-white min-h-screen p-4 md:p-8">
+      <div className="bg-white min-h-screen p-4 md:p-8 print:p-0 print:bg-white">
         <div className="flex justify-between items-center mb-6 print:hidden">
           <div className="flex items-center gap-3">
             <button onClick={() => setViewStatement(null)} className="px-4 py-2 bg-gray-100 rounded-xl text-sm font-bold hover:bg-gray-200 transition">
@@ -1105,7 +1105,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
           </div>
         </div>
 
-        <div className="max-w-3xl mx-auto border border-gray-200 rounded-2xl p-6 print:border-none print:p-0">
+        <div className="max-w-4xl mx-auto border border-gray-200 rounded-2xl p-6 print:border-none print:p-0 print:max-w-none">
           <div className="text-center mb-8 border-b pb-6">
             <h1 className="text-2xl font-black text-gray-900 mb-2">{language === 'ta' ? 'வார்ப்புகாரர் அறிக்கை' : 'Warper Statement'}</h1>
             <h2 className="text-xl font-bold text-gray-700">{warper.name}</h2>
@@ -1118,7 +1118,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
           </div>
 
           <div className="border border-gray-200 rounded-2xl overflow-hidden print:border-none print:overflow-visible">
-            <div className="overflow-x-auto overflow-y-auto max-h-[60vh] print:max-h-none">
+            <div className="overflow-x-auto overflow-y-auto max-h-[60vh] print:max-h-none print:overflow-visible">
               <table className="w-full text-left border-collapse">
                 <thead className="sticky top-0 z-10 bg-white shadow-sm print:static print:shadow-none">
                   <tr className="border-b-2 border-gray-200 text-gray-600">
@@ -1131,28 +1131,53 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedTxns.map((txn: any, idx) => (
-                    <tr key={idx} className="border-b border-gray-100">
-                      <td className="py-3 px-4 text-gray-800">{new Date(txn.date).toLocaleDateString()}</td>
-                      <td className="py-3 px-4 text-gray-800 font-medium">{(statementPage - 1) * pageSize + idx + 1}</td>
-                      <td className="py-3 px-4 text-gray-800">
-                        {txn.isDispatch ? (
-                          <span className="flex items-center gap-1">
-                            <ArrowDownLeft size={14} className="text-blue-500" /> 
-                            {txn.yarnType} {txn.colors ? Object.entries(txn.colors).map(([c, w]) => `${c} (${(w as number[]).reduce((a,b)=>a+b,0).toFixed(2)}kg)`).join(', ') : txn.color}
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1"><ArrowUpRight size={14} className="text-emerald-500" /> {txn.yarnType} {txn.color} {txn.ends ? `(${txn.ends} Ends)` : ''} {txn.warpNumber ? `(${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})` : ''}</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-center font-bold text-gray-700">
-                        {!txn.isDispatch ? (txn.length || warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId)?.warpLengthMeters || '-') : '-'}
-                      </td>
-                      <td className="py-3 px-4 text-right font-bold text-blue-600">{txn.isDispatch ? txn.weightKg.toFixed(2) : '-'}</td>
-                      <td className="py-3 px-4 text-right font-bold text-emerald-600">{!txn.isDispatch ? txn.weightKg.toFixed(2) : '-'}</td>
-                    </tr>
-                  ))}
-                  {paginatedTxns.length === 0 && (
+                  {/* Show all transactions for print, but paginate for screen view */}
+                  {(typeof window !== 'undefined' && window.matchMedia && (window.matchMedia('print').matches || (window as any).isPrinting)) ? (
+                    allTxns.map((txn: any, idx) => (
+                      <tr key={idx} className="border-b border-gray-100">
+                        <td className="py-3 px-4 text-gray-800">{new Date(txn.date).toLocaleDateString()}</td>
+                        <td className="py-3 px-4 text-gray-800 font-medium">{idx + 1}</td>
+                        <td className="py-3 px-4 text-gray-800">
+                          {txn.isDispatch ? (
+                            <span className="flex items-center gap-1">
+                              <ArrowDownLeft size={14} className="text-blue-500" /> 
+                              {txn.yarnType} {txn.colors ? Object.entries(txn.colors).map(([c, w]) => `${c} (${(w as number[]).reduce((a,b)=>a+b,0).toFixed(2)}kg)`).join(', ') : txn.color}
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1"><ArrowUpRight size={14} className="text-emerald-500" /> {txn.yarnType} {txn.color} {txn.ends ? `(${txn.ends} Ends)` : ''} {txn.warpNumber ? `(${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})` : ''}</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center font-bold text-gray-700">
+                          {!txn.isDispatch ? (txn.length || warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId)?.warpLengthMeters || '-') : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-blue-600">{txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-600">{!txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    paginatedTxns.map((txn: any, idx) => (
+                      <tr key={idx} className="border-b border-gray-100">
+                        <td className="py-3 px-4 text-gray-800">{new Date(txn.date).toLocaleDateString()}</td>
+                        <td className="py-3 px-4 text-gray-800 font-medium">{(statementPage - 1) * pageSize + idx + 1}</td>
+                        <td className="py-3 px-4 text-gray-800">
+                          {txn.isDispatch ? (
+                            <span className="flex items-center gap-1">
+                              <ArrowDownLeft size={14} className="text-blue-500" /> 
+                              {txn.yarnType} {txn.colors ? Object.entries(txn.colors).map(([c, w]) => `${c} (${(w as number[]).reduce((a,b)=>a+b,0).toFixed(2)}kg)`).join(', ') : txn.color}
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1"><ArrowUpRight size={14} className="text-emerald-500" /> {txn.yarnType} {txn.color} {txn.ends ? `(${txn.ends} Ends)` : ''} {txn.warpNumber ? `(${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})` : ''}</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center font-bold text-gray-700">
+                          {!txn.isDispatch ? (txn.length || warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId)?.warpLengthMeters || '-') : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-blue-600">{txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-600">{!txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
+                      </tr>
+                    ))
+                  )}
+                  {(allTxns.length === 0) && (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-gray-500 font-medium">
                         {language === 'ta' ? 'பதிவுகள் இல்லை' : 'No records found'}
@@ -1275,7 +1300,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
     });
 
     return (
-      <div className="bg-white min-h-screen p-4 md:p-8 animate-in fade-in slide-in-from-right-4 duration-300">
+      <div className="bg-white min-h-screen p-4 md:p-8 animate-in fade-in slide-in-from-right-4 duration-300 print:bg-white print:p-0">
         <div className="flex justify-between items-center mb-6 print:hidden">
           <div className="flex items-center gap-3">
             <button onClick={() => setIsViewingColorStatement(false)} className="px-4 py-2 bg-gray-100 rounded-xl text-sm font-bold hover:bg-gray-200 transition">
@@ -1290,7 +1315,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
           </div>
         </div>
 
-        <div className="max-w-full overflow-x-auto border border-gray-200 rounded-2xl p-6 print:border-none print:p-0">
+        <div className="max-w-full overflow-x-auto border border-gray-200 rounded-2xl p-6 print:border-none print:p-0 print:overflow-visible">
           <div className="text-center mb-8 border-b pb-6">
             <h1 className="text-2xl font-black text-gray-900 mb-2">{language === 'ta' ? 'வார்ப்பு கணக்கு அறிக்கை' : 'Warp Account Statement'}</h1>
             <h2 className="text-xl font-bold text-gray-700">{selectedWarper.name}</h2>

@@ -131,11 +131,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleTouchStart = (e: TouchEvent | MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.closest('button') || target.closest('.cursor-pointer')) {
-        if (navigator.vibrate) {
-          // Provide a subtle haptic feedback on touch
-          navigator.vibrate(15);
+      const target = e.target;
+      if (target instanceof Element) {
+        if (target.closest('button') || target.closest('.cursor-pointer')) {
+          if (navigator.vibrate) {
+            // Provide a subtle haptic feedback on touch
+            navigator.vibrate(15);
+          }
         }
       }
     };
