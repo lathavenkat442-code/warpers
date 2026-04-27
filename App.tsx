@@ -237,7 +237,7 @@ const App: React.FC = () => {
       )}
       
       {/* Desktop Sidebar */}
-      <aside className="sidebar-container hidden md:flex flex-col w-64 bg-zinc-950 text-zinc-300 h-screen sticky top-0 z-50 border-r border-zinc-800">
+      <aside className="sidebar-container hidden md:flex flex-col w-64 bg-zinc-950 text-zinc-300 h-screen sticky top-0 z-50 border-r border-zinc-800 print:hidden">
         <div className="p-6 flex items-center gap-3">
           <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain rounded-full bg-white p-0.5" onError={(e) => e.currentTarget.style.display = 'none'} />
           <h1 className="text-2xl font-black tamil-font truncate text-white tracking-tight">{customAppName || t.appName}</h1>
@@ -257,9 +257,9 @@ const App: React.FC = () => {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden print:h-auto print:overflow-visible flex-grow">
         {/* Mobile Header */}
-        <header className="md:hidden bg-white text-zinc-900 p-4 sticky top-0 z-40 border-b border-zinc-200 flex flex-wrap gap-2 justify-between items-center">
+        <header className="md:hidden bg-white text-zinc-900 p-4 sticky top-0 z-40 border-b border-zinc-200 flex flex-wrap gap-2 justify-between items-center print:hidden">
           <div className="flex items-center gap-3">
               <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain rounded-full bg-white p-0.5 shadow-sm" onError={(e) => e.currentTarget.style.display = 'none'} />
               <h1 className="text-xl font-black tamil-font truncate tracking-tight">{customAppName || t.appName}</h1>
@@ -283,7 +283,7 @@ const App: React.FC = () => {
         </header>
 
         {/* Desktop Header */}
-        <header className="hidden md:flex bg-white border-b border-zinc-200 p-5 sticky top-0 z-40 items-center justify-between">
+        <header className="hidden md:flex bg-white border-b border-zinc-200 p-5 sticky top-0 z-40 items-center justify-between print:hidden">
           <h2 className="text-2xl font-black text-zinc-900 tamil-font tracking-tight">
             {activeTab === 'warpers' && t.warpers}
             {activeTab === 'profile' && t.profile}
@@ -310,7 +310,7 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <main className={`flex-1 overflow-y-auto p-0 md:p-8 ${themeColor} pb-20 md:pb-8`}>
+        <main className={`flex-1 overflow-y-auto p-0 md:p-8 ${themeColor} pb-20 md:pb-8 print:p-0 print:overflow-visible print:bg-white`}>
           <div className="max-w-7xl mx-auto w-full">
             {activeTab === 'warpers' && <Warpers user={user} language={language} buttonColor={buttonColor} setToast={setToast} />}
             {activeTab === 'profile' && <Profile user={user} updateUser={(u) => { setUser(u); localStorage.setItem('warper_active_user', JSON.stringify(u)); }} onLogout={async () => { 
@@ -327,7 +327,7 @@ const App: React.FC = () => {
         </main>
 
         {/* Mobile Bottom Navigation */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-zinc-100 flex justify-around items-center p-2 z-50 pb-safe-area shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-zinc-100 flex justify-around items-center p-2 z-50 pb-safe-area shadow-[0_-4px_20px_rgba(0,0,0,0.03)] print:hidden">
           <button 
             onClick={() => setActiveTab('warpers')} 
             className={`flex flex-col items-center gap-1 p-2 px-6 rounded-2xl transition-all duration-300 ${activeTab === 'warpers' ? 'text-indigo-600 bg-indigo-50' : 'text-zinc-400'}`}

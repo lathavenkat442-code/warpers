@@ -2,7 +2,8 @@ import { ScanVerificationModal } from './ScanVerificationModal';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { User, Warper, YarnDispatch, WarperReturn, WarpOrder, DenierFormula, Weaver, Supplier, WarpSection, Loom, LoomTransaction, OrderType, WarpDesign } from '../types';
 import { GoogleGenAI } from "@google/genai";
-import { Plus, User as UserIcon, Trash2, Settings, FileText, ChevronDown, ChevronUp, Search, Printer, Camera, ArrowDownLeft, ArrowUpRight, PieChart, Share2, RefreshCw, Phone, ChevronRight, BookText, Scale, Package, CircleDot, Layers, LayoutGrid, ArrowLeft, History, X, ClipboardList } from 'lucide-react';
+import { Plus, User as UserIcon, Trash2, Settings, FileText, ChevronDown, ChevronUp, Search, Printer, Camera, ArrowDownLeft, ArrowUpRight, PieChart, Share2, RefreshCw, Phone, ChevronRight, BookText, Scale, Package, CircleDot, Layers, LayoutGrid, ArrowLeft, History, X, ClipboardList, Square, CheckSquare } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { YARN_COLORS, YARN_TYPES, PREDEFINED_COLORS } from '../constants';
 import { syncColumnToSupabase, fetchAllDataFromSupabase } from '../services/dbService';
 
@@ -19,6 +20,59 @@ const DetailItem = ({ label, value }: { label: string, value: any }) => (
     <span className="text-sm font-black text-gray-800">{value}</span>
   </div>
 );
+
+const AnimatedCompleteButton = ({ onComplete, language }: { onComplete: () => void, language: string }) => {
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  const handleClick = () => {
+    if (isCompleting) return;
+    setIsCompleting(true);
+    setTimeout(() => {
+      onComplete();
+    }, 600); // 600ms delay for animation
+  };
+
+  return (
+    <motion.button
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      onClick={handleClick}
+      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+        isCompleting 
+          ? 'bg-emerald-500 text-white shadow-sm' 
+          : 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200'
+      }`}
+    >
+      <AnimatePresence mode="wait">
+        {isCompleting ? (
+          <motion.div
+            key="checked"
+            initial={{ scale: 0, opacity: 0, rotate: -45 }}
+            animate={{ scale: 1, opacity: 1, rotate: 0 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          >
+            <CheckSquare size={16} className="text-white" />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="unchecked"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+          >
+            <Square size={16} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <span>
+        {isCompleting 
+          ? (language === 'ta' ? 'முடிந்தது!' : 'Done!') 
+          : (language === 'ta' ? 'ஓகே (தயார்)' : 'OK (Ready)')}
+      </span>
+    </motion.button>
+  );
+};
 
 const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zinc-600 hover:bg-zinc-700', setToast }) => {
   const [warpers, setWarpers] = useState<Warper[]>([]);
@@ -1131,52 +1185,50 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Show all transactions for print, but paginate for screen view */}
-                  {(typeof window !== 'undefined' && window.matchMedia && (window.matchMedia('print').matches || (window as any).isPrinting)) ? (
-                    allTxns.map((txn: any, idx) => (
-                      <tr key={idx} className="border-b border-gray-100">
-                        <td className="py-3 px-4 text-gray-800">{new Date(txn.date).toLocaleDateString()}</td>
-                        <td className="py-3 px-4 text-gray-800 font-medium">{idx + 1}</td>
-                        <td className="py-3 px-4 text-gray-800">
-                          {txn.isDispatch ? (
-                            <span className="flex items-center gap-1">
-                              <ArrowDownLeft size={14} className="text-blue-500" /> 
-                              {txn.yarnType} {txn.colors ? Object.entries(txn.colors).map(([c, w]) => `${c} (${(w as number[]).reduce((a,b)=>a+b,0).toFixed(2)}kg)`).join(', ') : txn.color}
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1"><ArrowUpRight size={14} className="text-emerald-500" /> {txn.yarnType} {txn.color} {txn.ends ? `(${txn.ends} Ends)` : ''} {txn.warpNumber ? `(${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})` : ''}</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-center font-bold text-gray-700">
-                          {!txn.isDispatch ? (txn.length || warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId)?.warpLengthMeters || '-') : '-'}
-                        </td>
-                        <td className="py-3 px-4 text-right font-bold text-blue-600">{txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
-                        <td className="py-3 px-4 text-right font-bold text-emerald-600">{!txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    paginatedTxns.map((txn: any, idx) => (
-                      <tr key={idx} className="border-b border-gray-100">
-                        <td className="py-3 px-4 text-gray-800">{new Date(txn.date).toLocaleDateString()}</td>
-                        <td className="py-3 px-4 text-gray-800 font-medium">{(statementPage - 1) * pageSize + idx + 1}</td>
-                        <td className="py-3 px-4 text-gray-800">
-                          {txn.isDispatch ? (
-                            <span className="flex items-center gap-1">
-                              <ArrowDownLeft size={14} className="text-blue-500" /> 
-                              {txn.yarnType} {txn.colors ? Object.entries(txn.colors).map(([c, w]) => `${c} (${(w as number[]).reduce((a,b)=>a+b,0).toFixed(2)}kg)`).join(', ') : txn.color}
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1"><ArrowUpRight size={14} className="text-emerald-500" /> {txn.yarnType} {txn.color} {txn.ends ? `(${txn.ends} Ends)` : ''} {txn.warpNumber ? `(${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})` : ''}</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-center font-bold text-gray-700">
-                          {!txn.isDispatch ? (txn.length || warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId)?.warpLengthMeters || '-') : '-'}
-                        </td>
-                        <td className="py-3 px-4 text-right font-bold text-blue-600">{txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
-                        <td className="py-3 px-4 text-right font-bold text-emerald-600">{!txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
-                      </tr>
-                    ))
-                  )}
+                  {/* All transactions for print only */}
+                  {allTxns.map((txn: any, idx) => (
+                    <tr key={`all-${idx}`} className="hidden print:table-row border-b border-gray-100">
+                      <td className="py-3 px-4 text-gray-800">{new Date(txn.date).toLocaleDateString()}</td>
+                      <td className="py-3 px-4 text-gray-800 font-medium">{idx + 1}</td>
+                      <td className="py-3 px-4 text-gray-800">
+                        {txn.isDispatch ? (
+                          <span className="flex items-center gap-1">
+                            <ArrowDownLeft size={14} className="text-blue-500" /> 
+                            {txn.yarnType} {txn.colors ? Object.entries(txn.colors).map(([c, w]) => `${c} (${(w as number[]).reduce((a,b)=>a+b,0).toFixed(2)}kg)`).join(', ') : txn.color}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1"><ArrowUpRight size={14} className="text-emerald-500" /> {txn.yarnType} {txn.color} {txn.ends ? `(${txn.ends} Ends)` : ''} {txn.warpNumber ? `(${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})` : ''}</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-center font-bold text-gray-700">
+                        {!txn.isDispatch ? (txn.length || warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId)?.warpLengthMeters || '-') : '-'}
+                      </td>
+                      <td className="py-3 px-4 text-right font-bold text-blue-600">{txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
+                      <td className="py-3 px-4 text-right font-bold text-emerald-600">{!txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
+                    </tr>
+                  ))}
+                  {/* Paginated transactions for screen view */}
+                  {paginatedTxns.map((txn: any, idx) => (
+                    <tr key={`paged-${idx}`} className="border-b border-gray-100 print:hidden">
+                      <td className="py-3 px-4 text-gray-800">{new Date(txn.date).toLocaleDateString()}</td>
+                      <td className="py-3 px-4 text-gray-800 font-medium">{(statementPage - 1) * pageSize + idx + 1}</td>
+                      <td className="py-3 px-4 text-gray-800">
+                        {txn.isDispatch ? (
+                          <span className="flex items-center gap-1">
+                            <ArrowDownLeft size={14} className="text-blue-500" /> 
+                            {txn.yarnType} {txn.colors ? Object.entries(txn.colors).map(([c, w]) => `${c} (${(w as number[]).reduce((a,b)=>a+b,0).toFixed(2)}kg)`).join(', ') : txn.color}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1"><ArrowUpRight size={14} className="text-emerald-500" /> {txn.yarnType} {txn.color} {txn.ends ? `(${txn.ends} Ends)` : ''} {txn.warpNumber ? `(${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})` : ''}</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-center font-bold text-gray-700">
+                        {!txn.isDispatch ? (txn.length || warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId)?.warpLengthMeters || '-') : '-'}
+                      </td>
+                      <td className="py-3 px-4 text-right font-bold text-blue-600">{txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
+                      <td className="py-3 px-4 text-right font-bold text-emerald-600">{!txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
+                    </tr>
+                  ))}
                   {(allTxns.length === 0) && (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-gray-500 font-medium">
@@ -1913,12 +1965,10 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                     </div>
                     <div className="flex gap-2">
                       {order.status === 'pending' && (
-                        <button 
-                          onClick={() => handleCompleteOrder(order.id)}
-                          className="bg-emerald-100 text-emerald-600 px-3 py-2 rounded-xl text-xs font-bold hover:bg-emerald-200 transition"
-                        >
-                          {language === 'ta' ? 'ஓகே (தயார்)' : 'OK (Ready)'}
-                        </button>
+                        <AnimatedCompleteButton 
+                          onComplete={() => handleCompleteOrder(order.id)}
+                          language={language}
+                        />
                       )}
                       {(order.loomId === 'STOCK' || order.loomId === 'UNASSIGNED') && (
                         <button 
