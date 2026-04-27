@@ -1287,29 +1287,39 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
   }
 
   if (isViewingColorStatement && selectedWarper) {
-    const dDispatches = selectedDeniers.includes('ALL') ? warperDispatches : warperDispatches.filter(d => selectedDeniers.includes(d.yarnType));
-    const dReturns = selectedDeniers.includes('ALL') ? warperReturns : warperReturns.filter(r => selectedDeniers.includes(r.yarnType));
+    let dDispatches = selectedDeniers.includes('ALL') ? warperDispatches : warperDispatches.filter(d => selectedDeniers.includes(d.yarnType));
+    let dReturns = selectedDeniers.includes('ALL') ? warperReturns : warperReturns.filter(r => selectedDeniers.includes(r.yarnType));
     
-    const allColors = Array.from(new Set([
-      ...dDispatches.map(d => d.color || 'Unknown'),
-      ...dReturns.map(r => r.color || 'Unknown')
-    ])).filter(Boolean) as string[];
+    if (startDate) {
+      dDispatches = dDispatches.filter(d => d.date >= startDate);
+      dReturns = dReturns.filter(r => r.date >= startDate);
+    }
+    if (endDate) {
+      dDispatches = dDispatches.filter(d => d.date <= endDate);
+      dReturns = dReturns.filter(r => r.date <= endDate);
+    }
+
+    const allColumns = Array.from(new Set([
+      ...dDispatches.map(d => `${d.color || 'Unknown'} (${d.yarnType || ''})`),
+      ...dReturns.map(r => `${r.color || 'Unknown'} (${r.yarnType || ''})`)
+    ])).filter(Boolean).sort() as string[];
 
     const groupedDispatches = Object.values(dDispatches.reduce((acc, d) => {
       const key = d.billNumber ? `${d.date}-${d.billNumber}-${d.supplierId}` : d.id;
+      const colKey = `${d.color || 'Unknown'} (${d.yarnType || ''})`;
       if (!acc[key]) {
         acc[key] = {
           ...d,
           isDispatch: true,
           timestamp: new Date(d.date).getTime(),
-          colors: { [d.color || 'Unknown']: [d.weightKg || 0] },
+          colors: { [colKey]: [d.weightKg || 0] },
           endsTotal: 0
         };
       } else {
-        if (acc[key].colors[d.color || 'Unknown']) {
-          acc[key].colors[d.color || 'Unknown'].push(d.weightKg || 0);
+        if (acc[key].colors[colKey]) {
+          acc[key].colors[colKey].push(d.weightKg || 0);
         } else {
-          acc[key].colors[d.color || 'Unknown'] = [d.weightKg || 0];
+          acc[key].colors[colKey] = [d.weightKg || 0];
         }
       }
       return acc;
@@ -1317,19 +1327,20 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
 
     const groupedReturns = Object.values(dReturns.reduce((acc, r) => {
       const key = r.orderId || r.id;
+      const colKey = `${r.color || 'Unknown'} (${r.yarnType || ''})`;
       if (!acc[key]) {
         acc[key] = {
           ...r,
           isDispatch: false,
           timestamp: new Date(r.date).getTime(),
-          colors: { [r.color || 'Unknown']: [r.weightKg || 0] },
+          colors: { [colKey]: [r.weightKg || 0] },
           endsTotal: r.ends || 0
         };
       } else {
-        if (acc[key].colors[r.color || 'Unknown']) {
-          acc[key].colors[r.color || 'Unknown'].push(r.weightKg || 0);
+        if (acc[key].colors[colKey]) {
+          acc[key].colors[colKey].push(r.weightKg || 0);
         } else {
-          acc[key].colors[r.color || 'Unknown'] = [r.weightKg || 0];
+          acc[key].colors[colKey] = [r.weightKg || 0];
         }
         acc[key].endsTotal += (r.ends || 0);
       }
@@ -1342,7 +1353,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
     ].sort((a, b) => a.timestamp - b.timestamp);
 
     const runningBalances: Record<string, number> = {};
-    allColors.forEach(c => runningBalances[c] = 0);
+    allColumns.forEach(c => runningBalances[c] = 0);
     allTxns.forEach((txn: any) => {
       Object.entries(txn.colors).forEach(([c, weights]) => {
         const totalW = (weights as number[]).reduce((sum, w) => sum + w, 0);
@@ -1360,7 +1371,18 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
             </button>
             <h2 className="text-xl font-black text-gray-800">{selectedWarper.name}</h2>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-3 items-center">
+            <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-200">
+              <span className="text-xs font-bold text-gray-500">{language === 'ta' ? 'முதல்:' : 'From:'}</span>
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-transparent text-sm font-bold outline-none" />
+              <span className="text-xs font-bold text-gray-500 ml-2">{language === 'ta' ? 'வரை:' : 'To:'}</span>
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-transparent text-sm font-bold outline-none" />
+              {(startDate || endDate) && (
+                <button onClick={() => {setStartDate(''); setEndDate('');}} className="ml-2 text-red-500 hover:text-red-700 text-xs font-bold">
+                  {language === 'ta' ? 'அழி' : 'Clear'}
+                </button>
+              )}
+            </div>
             <button onClick={() => window.print()} className={`flex items-center gap-2 ${buttonColor} text-white px-4 py-2 rounded-xl font-bold transition`}>
               <Printer size={18} /> {language === 'ta' ? 'பிரிண்ட் / டவுன்லோட்' : 'Print / Download'}
             </button>
@@ -1374,6 +1396,11 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
             <p className="text-sm font-bold text-gray-500 mt-1">
               {selectedDeniers.includes('ALL') ? (language === 'ta' ? 'அனைத்து டீனியர்' : 'All Deniers') : `${selectedDeniers.join(', ')} ${language === 'ta' ? 'டீனியர்' : 'Denier'}`}
             </p>
+            {(startDate || endDate) && (
+              <p className="text-sm font-bold text-gray-500 mt-2">
+                {startDate ? new Date(startDate).toLocaleDateString() : 'Start'} - {endDate ? new Date(endDate).toLocaleDateString() : 'End'}
+              </p>
+            )}
           </div>
 
           <table className="w-full text-left text-xs border-collapse">
@@ -1384,7 +1411,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                 <th className="py-3 px-2 font-bold">{language === 'ta' ? 'விவரம்' : 'Details'}</th>
                 <th className="py-3 px-2 font-bold text-center">{language === 'ta' ? 'இழை' : 'Ends'}</th>
                 <th className="py-3 px-2 font-bold text-center">{language === 'ta' ? 'மீட்டர்' : 'Meter'}</th>
-                {allColors.map(c => (
+                {allColumns.map(c => (
                   <th key={c} className="py-3 px-2 font-bold text-right">{c}</th>
                 ))}
               </tr>
@@ -1414,7 +1441,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                     <td className="py-3 px-2 text-center font-bold text-gray-700">
                       {!txn.isDispatch ? (txn.length || warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId)?.warpLengthMeters || '-') : '-'}
                     </td>
-                    {allColors.map(c => {
+                    {allColumns.map(c => {
                       const weights = txn.colors[c] as number[];
                       if (!weights || weights.length === 0) return <td key={c} className="py-3 px-2 text-right text-gray-300">-</td>;
                       const displayStr = weights.map(w => w.toFixed(2)).join(' + ');
@@ -1431,7 +1458,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
             <tfoot className="bg-gray-50 font-black">
               <tr>
                 <td colSpan={5} className="py-4 px-2 text-right text-gray-900">{language === 'ta' ? 'மீதம் (Bal):' : 'Balance:'}</td>
-                {allColors.map(c => (
+                {allColumns.map(c => (
                   <td key={c} className={`py-4 px-2 text-right ${runningBalances[c] > 0 ? 'text-red-600' : 'text-gray-900'}`}>
                     {runningBalances[c].toFixed(2)}
                   </td>
@@ -1634,7 +1661,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                 onChange={handleScan}
               />
               {showScanOptions && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowScanOptions(false)}>
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowScanOptions(false)}>
                   <div className="bg-white p-4 rounded-2xl shadow-xl w-64 space-y-2" onClick={e => e.stopPropagation()}>
                     <button onClick={() => { setShowScanOptions(false); cameraInputRef.current?.click(); }} className="w-full py-3 bg-zinc-100 rounded-xl font-bold">{language === 'ta' ? 'கேமரா' : 'Camera'}</button>
                     <button onClick={() => { setShowScanOptions(false); galleryInputRef.current?.click(); }} className="w-full py-3 bg-zinc-100 rounded-xl font-bold">{language === 'ta' ? 'கேலரி' : 'Gallery'}</button>
@@ -2997,7 +3024,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
       )}
 
       {isCreatingOrder && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto">
             <h3 className="font-black text-gray-800 mb-6 text-xl tamil-font">
               {activeOrderType === 'warp' ? (language === 'ta' ? 'புதிய வார்ப்பு ஆர்டர்' : 'New Warp Order') :
@@ -3161,7 +3188,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
       )}
 
       {isAddingReturn && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto">
             <h3 className="font-black text-gray-800 mb-6 text-xl tamil-font">{language === 'ta' ? 'வரவு' : 'Return'}</h3>
             <div className="space-y-4 mb-6">
@@ -3386,7 +3413,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
       )}
 
       {isAddingDispatch && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto">
             <h3 className="font-black text-gray-800 mb-6 text-xl tamil-font">{language === 'ta' ? 'நூல் வரவு' : 'Yarn Given'}</h3>
             <div className="space-y-4 mb-6">
@@ -3529,7 +3556,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
       )}
 
       {isManagingFormulas && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto">
             <h3 className="font-black text-gray-800 mb-6 text-xl tamil-font">{language === 'ta' ? 'டீனியர் ஃபார்முலா' : 'Denier Formulas'}</h3>
             
@@ -3748,7 +3775,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
         </div>
       )}
       {isScanning && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
           <div className="bg-white p-6 rounded-2xl shadow-xl text-center">
             <p className="text-lg font-bold">{scanStatus}</p>
           </div>
