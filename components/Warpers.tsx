@@ -3686,16 +3686,130 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                   <DetailItem label={language === 'ta' ? 'தறிகாரர்' : 'Weaver'} value={viewingDetail.data.weaverName || '-'} />
                   <DetailItem label={language === 'ta' ? 'இழை' : 'Ends'} value={viewingDetail.data.endsTotal ? viewingDetail.data.endsTotal.toString() : (viewingDetail.data.ends || '-')} />
                   <DetailItem label={language === 'ta' ? 'நீளம்' : 'Length'} value={viewingDetail.data.length || '-'} />
+
+                  {(() => {
+                    const originalReturns = returns.filter(r => {
+                      if (viewingDetail.data.orderId) {
+                        return r.orderId === viewingDetail.data.orderId && r.warperId === selectedWarper?.id;
+                      }
+                      return r.id === viewingDetail.data.id;
+                    });
+                    
+                    if (originalReturns.length === 0) return null;
+                    
+                    return (
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <p className="text-xs font-black text-gray-400 uppercase tracking-wider mb-2">
+                          {language === 'ta' ? 'வகை வாரியாக திருத்த/நீக்க' : 'Items (Click to Edit)'}
+                        </p>
+                        <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                          {originalReturns.map((ret) => (
+                            <div key={ret.id} className="flex justify-between items-center text-xs bg-gray-50 p-3 rounded-xl border border-gray-100/60">
+                              <div>
+                                <p className="font-black text-gray-800">{ret.color || '--'} - {ret.weightKg} kg</p>
+                                <p className="text-[10px] text-gray-400 font-bold">
+                                  {ret.ends ? `${ret.ends} Ends` : ''} {ret.length ? `| ${ret.length}m` : ''}
+                                </p>
+                              </div>
+                              <div className="flex gap-1">
+                                <button 
+                                  onClick={() => {
+                                    setEditingReturn({
+                                      id: ret.id,
+                                      date: ret.date,
+                                      orderId: ret.orderId || '',
+                                      designName: (warpOrders.find(o => o.id === ret.orderId || o.orderNumber === ret.orderId)?.designName) || '',
+                                      color: ret.color,
+                                      weight: ret.weightKg.toString(),
+                                      ends: ret.ends?.toString() || '',
+                                      length: ret.length?.toString() || '',
+                                      weaverId: ret.weaverId || '',
+                                      denier: ret.yarnType || ''
+                                    });
+                                    setViewingDetail(null);
+                                  }}
+                                  className="p-1.5 text-orange-500 hover:bg-orange-50 rounded-lg transition"
+                                  title={language === 'ta' ? 'திருத்து' : 'Edit'}
+                                >
+                                  <Pencil size={15} />
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                    if (confirm(language === 'ta' ? 'இந்த வரவு பதிவை நீக்க வேண்டுமா?' : 'Delete this return entry?')) {
+                                      handleDeleteReturn(ret.id);
+                                      setViewingDetail(null);
+                                    }
+                                  }}
+                                  className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"
+                                  title={language === 'ta' ? 'நீக்கு' : 'Delete'}
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </>
               )}
             </div>
 
-            <button 
-              onClick={() => setViewingDetail(null)}
-              className="w-full mt-8 py-4 bg-gray-100 text-gray-700 rounded-2xl font-bold text-sm hover:bg-gray-200 transition"
-            >
-              {language === 'ta' ? 'மூடு' : 'Close'}
-            </button>
+            <div className="flex gap-3 mt-8">
+              <button 
+                onClick={() => setViewingDetail(null)}
+                className="flex-1 py-4 bg-gray-100 text-gray-700 rounded-2xl font-bold text-sm hover:bg-gray-200 transition"
+              >
+                {language === 'ta' ? 'மூடு' : 'Close'}
+              </button>
+              {viewingDetail.type !== 'return' && (
+                <button 
+                  onClick={() => {
+                    if (viewingDetail.type === 'dispatch') {
+                      const isBillObj = !!viewingDetail.data.billNumber;
+                      const originalItems = dispatches.filter(d => {
+                        if (isBillObj) {
+                          return d.date === viewingDetail.data.date && 
+                                 d.billNumber === viewingDetail.data.billNumber && 
+                                 d.supplierId === viewingDetail.data.supplierId && 
+                                 d.yarnType === viewingDetail.data.yarnType && 
+                                 d.recipientId === viewingDetail.data.recipientId;
+                        }
+                        return d.id === viewingDetail.data.id;
+                      });
+                      
+                      setEditingDispatchGroup({
+                        key: viewingDetail.data.billNumber ? `${viewingDetail.data.date}_${viewingDetail.data.billNumber}_${viewingDetail.data.yarnType}_${viewingDetail.data.supplierId || ''}` : viewingDetail.data.id,
+                        date: viewingDetail.data.date,
+                        yarnType: viewingDetail.data.yarnType,
+                        supplierId: viewingDetail.data.supplierId || '',
+                        billNumber: viewingDetail.data.billNumber || '',
+                        items: (originalItems.length > 0 ? originalItems : [viewingDetail.data]).map(item => ({ id: item.id, color: item.color, weight: item.weightKg.toString() })),
+                        originalIds: (originalItems.length > 0 ? originalItems : [viewingDetail.data]).map(item => item.id)
+                      });
+                    } else if (viewingDetail.type === 'order') {
+                      const order = viewingDetail.data;
+                      setEditingOrder(order);
+                      setOrderDesignName(order.designName);
+                      setOrderTotalSarees(order.totalSareesExpected.toString());
+                      setOrderWarpLength(order.warpLengthMeters?.toString() || order.totalLength?.toString() || '');
+                      if (order.totalYarnWeight) {
+                        setOrderWarpWeight(order.totalYarnWeight.toString());
+                      } else {
+                        setOrderWarpWeight('');
+                      }
+                      setOrderSections(order.sections.map((s: any) => ({ ...s, id: s.id || (Date.now().toString() + Math.random().toString()) })));
+                      setIsCreatingOrder(true);
+                    }
+                    setViewingDetail(null);
+                  }}
+                  className={`flex-1 py-4 ${buttonColor} text-white rounded-2xl font-bold text-sm shadow-lg hover:opacity-95 transition`}
+                >
+                  {language === 'ta' ? 'திருத்து' : 'Edit'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
