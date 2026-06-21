@@ -341,6 +341,8 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
   const [orderTotalSarees, setOrderTotalSarees] = useState('');
   const [orderWarpLength, setOrderWarpLength] = useState('');
   const [orderTotalWeight, setOrderWarpWeight] = useState('');
+  const [orderWeaverId, setOrderWeaverId] = useState('STOCK');
+  const [orderLoomNumber, setOrderLoomNumber] = useState('-');
 
   const [isAssigningOrder, setIsAssigningOrder] = useState<string | null>(null);
   const [assignWeaverId, setAssignWeaverId] = useState('');
@@ -688,6 +690,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
     }
 
     let updatedOrders = [...warpOrders];
+    const selectedWeaver = weavers.find(w => w.id === orderWeaverId);
 
     if (editingOrder) {
       const updatedOrder: WarpOrder = {
@@ -699,9 +702,29 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
         totalSareesExpected: parseInt(orderTotalSarees),
         warpLengthMeters: parseFloat(orderWarpLength),
         totalYarnWeight: parseFloat(orderTotalWeight || calculatedOrderWeight),
+        weaverId: orderWeaverId,
+        weaverName: orderWeaverId === 'STOCK' ? (language === 'ta' ? 'ஸ்டாக் (Stock)' : 'Stock') : (selectedWeaver ? selectedWeaver.name : '-'),
+        loomNumber: orderLoomNumber || '-',
+        loomId: orderWeaverId === 'STOCK' ? 'STOCK' : (orderLoomNumber ? `loom_${orderWeaverId}_${orderLoomNumber}` : 'UNASSIGNED')
       };
       updatedOrders = warpOrders.map(o => o.id === editingOrder.id ? updatedOrder : o);
       saveWarpOrders(updatedOrders);
+
+      // Update associated returns
+      const updatedReturns = returns.map(ret => {
+        if (ret.orderId === editingOrder.id || ret.orderId === editingOrder.orderNumber) {
+          return {
+            ...ret,
+            weaverId: orderWeaverId,
+            weaverName: orderWeaverId === 'STOCK' ? (language === 'ta' ? 'ஸ்டாக் (Stock)' : 'Stock') : (selectedWeaver ? selectedWeaver.name : '-')
+          };
+        }
+        return ret;
+      });
+      if (JSON.stringify(returns) !== JSON.stringify(updatedReturns)) {
+        saveReturns(updatedReturns);
+      }
+
       setEditingOrder(null);
       showToast(language === 'ta' ? 'ஆர்டர் வெற்றிகரமாக திருத்தப்பட்டது!' : 'Order updated successfully!');
     } else {
@@ -719,10 +742,10 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
         id: timestamp.toString() + '_stock_order',
         date: new Date().toISOString().split('T')[0],
         orderNumber: newOrderNumber,
-        loomId: 'STOCK',
-        weaverId: 'STOCK',
-        weaverName: language === 'ta' ? 'ஸ்டாக் (Stock)' : 'Stock',
-        loomNumber: '-',
+        loomId: orderWeaverId === 'STOCK' ? 'STOCK' : (orderLoomNumber ? `loom_${orderWeaverId}_${orderLoomNumber}` : 'UNASSIGNED'),
+        weaverId: orderWeaverId,
+        weaverName: orderWeaverId === 'STOCK' ? (language === 'ta' ? 'ஸ்டாக் (Stock)' : 'Stock') : (selectedWeaver ? selectedWeaver.name : '-'),
+        loomNumber: orderLoomNumber || '-',
         warperId: selectedWarper.id,
         designName: orderDesignName,
         sections: orderSections,
@@ -754,8 +777,10 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
     setOrderTotalSarees('');
     setOrderWarpLength('');
     setOrderWarpWeight('');
+    setOrderWeaverId('STOCK');
+    setOrderLoomNumber('-');
     setViewType('orders');
-  }, [orderDesignName, orderTotalSarees, orderTotalWeight, calculatedOrderWeight, orderWarpLength, selectedWarper, orderSections, warpOrders, saveWarpOrders, language, showToast, activeOrderType, editingOrder]);
+  }, [orderDesignName, orderTotalSarees, orderTotalWeight, calculatedOrderWeight, orderWarpLength, selectedWarper, orderSections, warpOrders, saveWarpOrders, language, showToast, activeOrderType, editingOrder, orderWeaverId, orderLoomNumber, weavers, returns, saveReturns]);
 
   const handleCompleteOrder = useCallback((orderId: string) => {
     const order = warpOrders.find(o => o.id === orderId);
@@ -2150,7 +2175,12 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
           <div className="space-y-4">
             <div className="flex justify-end mb-2">
               <button 
-                onClick={() => setIsCreatingOrder(true)}
+                onClick={() => {
+                  setEditingOrder(null);
+                  setOrderWeaverId('STOCK');
+                  setOrderLoomNumber('-');
+                  setIsCreatingOrder(true);
+                }}
                 className={`${buttonColor} text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-md transition`}
               >
                 <Plus size={16} /> {
@@ -2230,6 +2260,8 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                             setOrderWarpWeight('');
                           }
                           setOrderSections(order.sections.map(s => ({ ...s, id: s.id || (Date.now().toString() + Math.random().toString()) })));
+                          setOrderWeaverId(order.weaverId || 'STOCK');
+                          setOrderLoomNumber(order.loomNumber || '-');
                           setIsCreatingOrder(true);
                         }}
                         className="p-2 rounded-xl bg-orange-50 text-orange-500 hover:bg-orange-100 transition"
@@ -2923,6 +2955,8 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                         setOrderDesignName(design.designName);
                         setOrderSections(JSON.parse(JSON.stringify(design.sections))); // Deep copy
                         setOrderWarpLength(design.warpLengthMeters?.toString() || '1000');
+                        setOrderWeaverId('STOCK');
+                        setOrderLoomNumber('-');
                         setActiveOrderType('warp');
                         setIsCreatingOrder(true);
                         setViewType('orders');
@@ -3433,6 +3467,42 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                   className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm outline-none focus:border-zinc-400 font-bold"
                 />
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">
+                    {language === 'ta' ? 'தறிக்காரர்' : 'Weaver'}
+                  </label>
+                  <select 
+                    value={orderWeaverId}
+                    onChange={e => {
+                      setOrderWeaverId(e.target.value);
+                      if (e.target.value === 'STOCK') {
+                        setOrderLoomNumber('-');
+                      }
+                    }}
+                    className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm outline-none focus:border-zinc-400 font-bold"
+                  >
+                    <option value="STOCK">{language === 'ta' ? 'ஸ்டாக் (Stock)' : 'Stock'}</option>
+                    {weavers.map(w => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">
+                    {language === 'ta' ? 'தறி எண்' : 'Loom No'}
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder={language === 'ta' ? 'தறி எண்' : 'Loom Number'}
+                    value={orderLoomNumber === '-' ? '' : orderLoomNumber}
+                    disabled={orderWeaverId === 'STOCK'}
+                    onChange={e => setOrderLoomNumber(e.target.value || '-')}
+                    className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm outline-none focus:border-zinc-400 font-bold disabled:opacity-50"
+                  />
+                </div>
+              </div>
               
               <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
                 <p className="text-xs font-bold text-emerald-800 mb-1">
@@ -3462,6 +3532,8 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                   setOrderTotalSarees('');
                   setOrderWarpLength('');
                   setOrderWarpWeight('');
+                  setOrderWeaverId('STOCK');
+                  setOrderLoomNumber('-');
                 }} 
                 className="flex-1 py-4 bg-gray-100 text-gray-700 rounded-2xl font-bold text-sm"
               >
@@ -3800,6 +3872,8 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                         setOrderWarpWeight('');
                       }
                       setOrderSections(order.sections.map((s: any) => ({ ...s, id: s.id || (Date.now().toString() + Math.random().toString()) })));
+                      setOrderWeaverId(order.weaverId || 'STOCK');
+                      setOrderLoomNumber(order.loomNumber || '-');
                       setIsCreatingOrder(true);
                     }
                     setViewingDetail(null);
