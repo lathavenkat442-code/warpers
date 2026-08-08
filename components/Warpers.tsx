@@ -710,19 +710,61 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
       updatedOrders = warpOrders.map(o => o.id === editingOrder.id ? updatedOrder : o);
       saveWarpOrders(updatedOrders);
 
-      // Update associated returns
-      const updatedReturns = returns.map(ret => {
-        if (ret.orderId === editingOrder.id || ret.orderId === editingOrder.orderNumber) {
+      // Update associated returns with updated colors, ends, length, and recalculated weights
+      const associatedReturns = returns.filter(ret => ret.orderId === editingOrder.id || ret.orderId === editingOrder.orderNumber);
+      if (associatedReturns.length > 0) {
+        const orderLengthMeters = parseFloat(orderWarpLength) || 0;
+        
+        // Group new sections by denier and color
+        const sectionGroups: Record<string, { denier: string, color: string, ends: number, weightKg: number }> = {};
+        orderSections.forEach(sec => {
+          if (sec.color && sec.ends && sec.ends > 0 && sec.denier) {
+            const key = `${sec.denier}|${sec.color}`;
+            if (!sectionGroups[key]) {
+              sectionGroups[key] = { denier: sec.denier, color: sec.color, ends: 0, weightKg: 0 };
+            }
+            sectionGroups[key].ends += sec.ends;
+            
+            const formula = denierFormulas.find(f => f.denier === sec.denier);
+            let gramsPerEnd = 0;
+            if (formula) {
+              gramsPerEnd = formula.gramsPerEnd || (formula.multiplier * 1000);
+            } else {
+              const denierMatch = sec.denier.match(/(\d+)/);
+              if (denierMatch) {
+                gramsPerEnd = parseInt(denierMatch[1]) / 9;
+              }
+            }
+            if (gramsPerEnd > 0) {
+              sectionGroups[key].weightKg += (sec.ends * gramsPerEnd * orderLengthMeters) / 1000000;
+            }
+          }
+        });
+
+        const firstRet = associatedReturns[0];
+        const unassociatedReturns = returns.filter(ret => ret.orderId !== editingOrder.id && ret.orderId !== editingOrder.orderNumber);
+        
+        const newGroupValues = Object.values(sectionGroups);
+        const updatedAssociatedReturns: WarperReturn[] = newGroupValues.map((group, idx) => {
+          const existing = associatedReturns[idx];
           return {
-            ...ret,
-            weaverId: orderWeaverId,
-            weaverName: orderWeaverId === 'STOCK' ? (language === 'ta' ? 'ஸ்டாக் (Stock)' : 'Stock') : (selectedWeaver ? selectedWeaver.name : '-')
+            id: existing ? existing.id : (`${Date.now()}_${Math.random().toString(36).substr(2, 9)}`),
+            warperId: editingOrder.warperId,
+            warpNumber: firstRet.warpNumber || '1',
+            weaverId: orderWeaverId === 'STOCK' ? undefined : orderWeaverId,
+            weaverName: orderWeaverId === 'STOCK' ? (language === 'ta' ? 'ஸ்டாக் (Stock)' : 'Stock') : (selectedWeaver ? selectedWeaver.name : '-'),
+            date: firstRet.date || new Date().toISOString().split('T')[0],
+            yarnType: group.denier,
+            color: group.color,
+            weightKg: group.weightKg,
+            ends: group.ends,
+            length: orderLengthMeters,
+            orderId: editingOrder.id,
+            createdAt: existing ? existing.createdAt : Date.now()
           };
-        }
-        return ret;
-      });
-      if (JSON.stringify(returns) !== JSON.stringify(updatedReturns)) {
-        saveReturns(updatedReturns);
+        });
+
+        saveReturns([...unassociatedReturns, ...updatedAssociatedReturns]);
       }
 
       setEditingOrder(null);
@@ -1383,49 +1425,155 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                 </thead>
                 <tbody>
                   {/* All transactions for print only */}
-                  {allTxns.map((txn: any, idx) => (
-                    <tr key={`all-${idx}`} className="hidden print:table-row border-b border-gray-100">
-                      <td className="py-3 px-4 text-gray-800">{new Date(txn.date).toLocaleDateString()}</td>
-                      <td className="py-3 px-4 text-gray-800 font-medium">{idx + 1}</td>
-                      <td className="py-3 px-4 text-gray-800">
-                        {txn.isDispatch ? (
-                          <span className="flex items-center gap-1">
-                            <ArrowDownLeft size={14} className="text-blue-500" /> 
-                            {txn.yarnType} {txn.colors ? Object.entries(txn.colors).map(([c, w]) => `${c} (${(w as number[]).reduce((a,b)=>a+b,0).toFixed(2)}kg)`).join(', ') : txn.color}
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1"><ArrowUpRight size={14} className="text-emerald-500" /> {txn.yarnType} {txn.color} {txn.ends ? `(${txn.ends} Ends)` : ''} {txn.warpNumber ? `(${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})` : ''}</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-center font-bold text-gray-700">
-                        {!txn.isDispatch ? (txn.length || warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId)?.warpLengthMeters || '-') : '-'}
-                      </td>
-                      <td className="py-3 px-4 text-right font-bold text-blue-600">{txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
-                      <td className="py-3 px-4 text-right font-bold text-emerald-600">{!txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
-                    </tr>
-                  ))}
+                  {allTxns.map((txn: any, idx) => {
+                    const order = warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId);
+                    let particularsText = '';
+                    if (txn.isDispatch) {
+                      const defaultText = language === 'ta' ? 'நூல் வரவு' : 'Yarn Given';
+                      const supplierName = txn.supplierName || defaultText;
+                      const billStr = txn.billNumber ? ` (Bill: ${txn.billNumber})` : '';
+                      const colorsList = txn.colors 
+                        ? Array.from(new Set(Object.keys(txn.colors).map(k => k.split('|')[0]))).filter(Boolean).join(', ') 
+                        : (txn.color || '');
+                      particularsText = `${supplierName}${billStr}${colorsList ? ` | ${colorsList}` : ''}`;
+                    } else {
+                      let weaverName = '';
+                      if (order) {
+                        const orderNum = order.orderNumber ? `#${order.orderNumber}` : '';
+                        const weaver = order.weaverId === 'STOCK' 
+                          ? (language === 'ta' ? 'ஸ்டாக் (Stock)' : 'Stock') 
+                          : (order.weaverName || '-');
+                        const loomStr = (order.loomNumber && order.loomNumber !== '-') 
+                          ? ` (${language === 'ta' ? 'தறி' : 'Loom'} ${order.loomNumber})` 
+                          : '';
+                        weaverName = `${orderNum ? orderNum + ' - ' : ''}${weaver}${loomStr}`;
+                      } else {
+                        weaverName = txn.weaverName || (language === 'ta' ? 'வரவு' : 'Return');
+                      }
+
+                      let colorsStr = '';
+                      if (txn.colors) {
+                        colorsStr = Array.from(new Set(Object.keys(txn.colors).map(k => k.split('|')[0]))).filter(Boolean).join(', ');
+                      } else if (txn.color) {
+                        colorsStr = txn.color;
+                      } else if (order && order.sections) {
+                        colorsStr = Array.from(new Set(order.sections.map((s: any) => s.color).filter(Boolean))).join(', ');
+                      }
+
+                      const endsCount = txn.endsTotal || txn.ends || (order ? order.totalEnds : null);
+                      const endsLabel = language === 'ta' ? 'இழை' : 'Ends';
+                      const endsStr = endsCount ? `${endsCount} ${endsLabel}` : '';
+
+                      let detailsParts = [weaverName];
+                      if (colorsStr) detailsParts.push(`${language === 'ta' ? 'கலர்:' : 'Color:'} ${colorsStr}`);
+                      if (endsStr) detailsParts.push(endsStr);
+
+                      particularsText = detailsParts.filter(Boolean).join(' | ');
+                      if (txn.warpNumber) {
+                        particularsText += ` (${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})`;
+                      }
+                    }
+
+                    return (
+                      <tr key={`all-${idx}`} className="hidden print:table-row border-b border-gray-100">
+                        <td className="py-3 px-4 text-gray-800">{new Date(txn.date).toLocaleDateString()}</td>
+                        <td className="py-3 px-4 text-gray-800 font-medium">{idx + 1}</td>
+                        <td className="py-3 px-4 text-gray-800 font-bold">
+                          {txn.isDispatch ? (
+                            <span className="flex items-center gap-1">
+                              <ArrowDownLeft size={14} className="text-blue-500 shrink-0" /> 
+                              {particularsText}
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <ArrowUpRight size={14} className="text-emerald-500 shrink-0" /> 
+                              {particularsText}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center font-bold text-gray-700">
+                          {!txn.isDispatch ? (txn.length || order?.warpLengthMeters || '-') : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-blue-600">{txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-600">{!txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
+                      </tr>
+                    );
+                  })}
                   {/* Paginated transactions for screen view */}
-                  {paginatedTxns.map((txn: any, idx) => (
-                    <tr key={`paged-${idx}`} className="border-b border-gray-100 print:hidden">
-                      <td className="py-3 px-4 text-gray-800">{new Date(txn.date).toLocaleDateString()}</td>
-                      <td className="py-3 px-4 text-gray-800 font-medium">{(statementPage - 1) * pageSize + idx + 1}</td>
-                      <td className="py-3 px-4 text-gray-800">
-                        {txn.isDispatch ? (
-                          <span className="flex items-center gap-1">
-                            <ArrowDownLeft size={14} className="text-blue-500" /> 
-                            {txn.yarnType} {txn.colors ? Object.entries(txn.colors).map(([c, w]) => `${c} (${(w as number[]).reduce((a,b)=>a+b,0).toFixed(2)}kg)`).join(', ') : txn.color}
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1"><ArrowUpRight size={14} className="text-emerald-500" /> {txn.yarnType} {txn.color} {txn.ends ? `(${txn.ends} Ends)` : ''} {txn.warpNumber ? `(${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})` : ''}</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-center font-bold text-gray-700">
-                        {!txn.isDispatch ? (txn.length || warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId)?.warpLengthMeters || '-') : '-'}
-                      </td>
-                      <td className="py-3 px-4 text-right font-bold text-blue-600">{txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
-                      <td className="py-3 px-4 text-right font-bold text-emerald-600">{!txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
-                    </tr>
-                  ))}
+                  {paginatedTxns.map((txn: any, idx) => {
+                    const order = warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId);
+                    let particularsText = '';
+                    if (txn.isDispatch) {
+                      const defaultText = language === 'ta' ? 'நூல் வரவு' : 'Yarn Given';
+                      const supplierName = txn.supplierName || defaultText;
+                      const billStr = txn.billNumber ? ` (Bill: ${txn.billNumber})` : '';
+                      const colorsList = txn.colors 
+                        ? Array.from(new Set(Object.keys(txn.colors).map(k => k.split('|')[0]))).filter(Boolean).join(', ') 
+                        : (txn.color || '');
+                      particularsText = `${supplierName}${billStr}${colorsList ? ` | ${colorsList}` : ''}`;
+                    } else {
+                      let weaverName = '';
+                      if (order) {
+                        const orderNum = order.orderNumber ? `#${order.orderNumber}` : '';
+                        const weaver = order.weaverId === 'STOCK' 
+                          ? (language === 'ta' ? 'ஸ்டாக் (Stock)' : 'Stock') 
+                          : (order.weaverName || '-');
+                        const loomStr = (order.loomNumber && order.loomNumber !== '-') 
+                          ? ` (${language === 'ta' ? 'தறி' : 'Loom'} ${order.loomNumber})` 
+                          : '';
+                        weaverName = `${orderNum ? orderNum + ' - ' : ''}${weaver}${loomStr}`;
+                      } else {
+                        weaverName = txn.weaverName || (language === 'ta' ? 'வரவு' : 'Return');
+                      }
+
+                      let colorsStr = '';
+                      if (txn.colors) {
+                        colorsStr = Array.from(new Set(Object.keys(txn.colors).map(k => k.split('|')[0]))).filter(Boolean).join(', ');
+                      } else if (txn.color) {
+                        colorsStr = txn.color;
+                      } else if (order && order.sections) {
+                        colorsStr = Array.from(new Set(order.sections.map((s: any) => s.color).filter(Boolean))).join(', ');
+                      }
+
+                      const endsCount = txn.endsTotal || txn.ends || (order ? order.totalEnds : null);
+                      const endsLabel = language === 'ta' ? 'இழை' : 'Ends';
+                      const endsStr = endsCount ? `${endsCount} ${endsLabel}` : '';
+
+                      let detailsParts = [weaverName];
+                      if (colorsStr) detailsParts.push(`${language === 'ta' ? 'கலர்:' : 'Color:'} ${colorsStr}`);
+                      if (endsStr) detailsParts.push(endsStr);
+
+                      particularsText = detailsParts.filter(Boolean).join(' | ');
+                      if (txn.warpNumber) {
+                        particularsText += ` (${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})`;
+                      }
+                    }
+
+                    return (
+                      <tr key={`paged-${idx}`} className="border-b border-gray-100 print:hidden">
+                        <td className="py-3 px-4 text-gray-800">{new Date(txn.date).toLocaleDateString()}</td>
+                        <td className="py-3 px-4 text-gray-800 font-medium">{(statementPage - 1) * pageSize + idx + 1}</td>
+                        <td className="py-3 px-4 text-gray-800 font-bold">
+                          {txn.isDispatch ? (
+                            <span className="flex items-center gap-1">
+                              <ArrowDownLeft size={14} className="text-blue-500 shrink-0" /> 
+                              {particularsText}
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <ArrowUpRight size={14} className="text-emerald-500 shrink-0" /> 
+                              {particularsText}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center font-bold text-gray-700">
+                          {!txn.isDispatch ? (txn.length || order?.warpLengthMeters || '-') : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-blue-600">{txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-600">{!txn.isDispatch ? (txn.weightKg || 0).toFixed(2) : '-'}</td>
+                      </tr>
+                    );
+                  })}
                   {(allTxns.length === 0) && (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-gray-500 font-medium">
@@ -1618,15 +1766,48 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                 let particulars = '';
                 if (txn.isDispatch) {
                   const defaultText = language === 'ta' ? 'நூல் வரவு' : 'Yarn Given';
+                  const colorsList = txn.colors 
+                    ? Array.from(new Set(Object.keys(txn.colors).map(k => k.split('|')[0]))).filter(Boolean).join(', ') 
+                    : (txn.color || '');
                   particulars = (txn.supplierName || defaultText) + (txn.billNumber ? ` (Bill: ${txn.billNumber})` : '');
+                  if (colorsList) particulars += ` | ${colorsList}`;
                 } else {
-                  const order = warpOrders.find(o => o.id === txn.orderId);
+                  const order = warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId);
+                  let weaverName = '';
                   if (order) {
-                    particulars = `${order.orderNumber || ''} - ${order.weaverName || ''}`;
+                    const orderNum = order.orderNumber ? `#${order.orderNumber}` : '';
+                    const weaver = order.weaverId === 'STOCK' 
+                      ? (language === 'ta' ? 'ஸ்டாக் (Stock)' : 'Stock') 
+                      : (order.weaverName || '-');
+                    const loomStr = (order.loomNumber && order.loomNumber !== '-') 
+                      ? ` (${language === 'ta' ? 'தறி' : 'Loom'} ${order.loomNumber})` 
+                      : '';
+                    weaverName = `${orderNum ? orderNum + ' - ' : ''}${weaver}${loomStr}`;
                   } else {
-                    particulars = txn.weaverName || (language === 'ta' ? 'வரவு' : 'Return');
+                    weaverName = txn.weaverName || (language === 'ta' ? 'வரவு' : 'Return');
                   }
-                  if (txn.warpNumber) particulars += ` (${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})`;
+
+                  let colorsStr = '';
+                  if (txn.colors) {
+                    colorsStr = Array.from(new Set(Object.keys(txn.colors).map(k => k.split('|')[0]))).filter(Boolean).join(', ');
+                  } else if (txn.color) {
+                    colorsStr = txn.color;
+                  } else if (order && order.sections) {
+                    colorsStr = Array.from(new Set(order.sections.map((s: any) => s.color).filter(Boolean))).join(', ');
+                  }
+
+                  const endsCount = txn.endsTotal || txn.ends || (order ? order.totalEnds : null);
+                  const endsLabel = language === 'ta' ? 'இழை' : 'Ends';
+                  const endsStr = endsCount ? `${endsCount} ${endsLabel}` : '';
+
+                  let detailsParts = [weaverName];
+                  if (colorsStr) detailsParts.push(`${language === 'ta' ? 'கலர்:' : 'Color:'} ${colorsStr}`);
+                  if (endsStr) detailsParts.push(endsStr);
+
+                  particulars = detailsParts.filter(Boolean).join(' | ');
+                  if (txn.warpNumber) {
+                    particulars += ` (${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})`;
+                  }
                 }
 
                 return (
@@ -2030,28 +2211,51 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                             </thead>
                             <tbody className="divide-y divide-gray-50">
                               {paginatedTxns.map((txn: any, idx: number) => {
-                                let particulars = '';
+                                const order = warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId);
+
+                                let mainTitle = '';
+                                let colorTag = '';
+                                let endsTag = '';
+                                let sNoTag = '';
+
                                 if (txn.isDispatch) {
                                   const defaultText = language === 'ta' ? 'நூல் வரவு' : 'Yarn Given';
-                                  particulars = (txn.supplierName || defaultText) + (txn.billNumber ? ` (Bill: ${txn.billNumber})` : '');
-                                } else {
-                                  const order = warpOrders.find(o => o.id === txn.orderId);
-                                  let baseParticulars = '';
-                                  if (order) {
-                                    const orderNum = order.orderNumber || '';
-                                    if (order.weaverId === 'STOCK') {
-                                      baseParticulars = `Stock - ${orderNum}`;
-                                    } else {
-                                      baseParticulars = `${orderNum} - ${order.weaverName || ''}`;
-                                    }
-                                  } else {
-                                    baseParticulars = txn.weaverName || (language === 'ta' ? 'வரவு' : 'Return');
+                                  mainTitle = (txn.supplierName || defaultText) + (txn.billNumber ? ` (Bill: ${txn.billNumber})` : '');
+                                  if (txn.colors) {
+                                    colorTag = Array.from(new Set(Object.keys(txn.colors).map(k => k.split('|')[0]))).filter(Boolean).join(', ');
+                                  } else if (txn.color) {
+                                    colorTag = txn.color;
                                   }
-                                  
-                                  if (txn.warpNumber) {
-                                    particulars = `${baseParticulars} (${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})`;
+                                } else {
+                                  if (order) {
+                                    const orderNum = order.orderNumber ? `#${order.orderNumber}` : '';
+                                    const weaver = order.weaverId === 'STOCK' 
+                                      ? (language === 'ta' ? 'ஸ்டாக் (Stock)' : 'Stock') 
+                                      : (order.weaverName || '-');
+                                    const loomStr = (order.loomNumber && order.loomNumber !== '-') 
+                                      ? ` (${language === 'ta' ? 'தறி' : 'Loom'} ${order.loomNumber})` 
+                                      : '';
+                                    mainTitle = orderNum ? `${orderNum} - ${weaver}${loomStr}` : `${weaver}${loomStr}`;
                                   } else {
-                                    particulars = baseParticulars;
+                                    mainTitle = txn.weaverName || (language === 'ta' ? 'வரவு' : 'Return');
+                                  }
+
+                                  if (txn.colors) {
+                                    colorTag = Array.from(new Set(Object.keys(txn.colors).map(k => k.split('|')[0]))).filter(Boolean).join(', ');
+                                  } else if (txn.color) {
+                                    colorTag = txn.color;
+                                  } else if (order && order.sections) {
+                                    colorTag = Array.from(new Set(order.sections.map((s: any) => s.color).filter(Boolean))).join(', ');
+                                  }
+
+                                  const endsCount = txn.endsTotal || txn.ends || (order ? order.totalEnds : null);
+                                  const endsLabel = language === 'ta' ? 'இழை' : 'Ends';
+                                  if (endsCount) {
+                                    endsTag = `${endsCount} ${endsLabel}`;
+                                  }
+
+                                  if (txn.warpNumber) {
+                                    sNoTag = `${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber}`;
                                   }
                                 }
 
@@ -2065,7 +2269,6 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                                           if (txn.isDispatch) {
                                             setViewingDetail({ type: 'dispatch', data: txn });
                                           } else {
-                                            const order = warpOrders.find(o => o.id === txn.orderId || o.orderNumber === txn.orderId);
                                             if (order) {
                                               setViewingDetail({ type: 'order', data: order });
                                             } else {
@@ -2075,7 +2278,26 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                                         }}
                                         className="text-left hover:text-blue-600 transition-colors"
                                       >
-                                        {particulars}
+                                        <div className="font-bold text-gray-900 leading-tight">{mainTitle}</div>
+                                        {(colorTag || endsTag || sNoTag) && (
+                                          <div className="text-[11px] text-gray-600 font-medium flex items-center gap-1.5 flex-wrap mt-1">
+                                            {colorTag && (
+                                              <span className="bg-zinc-100 text-zinc-800 px-1.5 py-0.5 rounded font-bold border border-zinc-200">
+                                                {language === 'ta' ? 'கலர்:' : 'Color:'} {colorTag}
+                                              </span>
+                                            )}
+                                            {endsTag && (
+                                              <span className="bg-emerald-50 text-emerald-800 px-1.5 py-0.5 rounded font-bold border border-emerald-100">
+                                                {endsTag}
+                                              </span>
+                                            )}
+                                            {sNoTag && (
+                                              <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200">
+                                                {sNoTag}
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
                                       </button>
                                     </td>
                                     <td className="p-3 text-center font-bold text-gray-600">{!txn.isDispatch && txn.endsTotal ? txn.endsTotal : '-'}</td>
