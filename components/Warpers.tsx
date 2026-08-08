@@ -74,6 +74,52 @@ const AnimatedCompleteButton = ({ onComplete, language }: { onComplete: () => vo
   );
 };
 
+const getColorEndsBreakdown = (txn: any, order: any, language: string) => {
+  if (!txn || txn.isDispatch) {
+    return [];
+  }
+
+  const map = new Map<string, number>();
+
+  if (order && order.sections && Array.isArray(order.sections) && order.sections.length > 0) {
+    order.sections.forEach((sec: any) => {
+      if (sec.color) {
+        const c = sec.color.trim();
+        if (c) {
+          map.set(c, (map.get(c) || 0) + (parseFloat(sec.ends) || 0));
+        }
+      }
+    });
+  } else if (txn.returnsList && Array.isArray(txn.returnsList) && txn.returnsList.length > 0) {
+    txn.returnsList.forEach((r: any) => {
+      if (r.color) {
+        const c = r.color.trim();
+        if (c) {
+          map.set(c, (map.get(c) || 0) + (parseFloat(r.ends) || 0));
+        }
+      }
+    });
+  } else if (txn.color) {
+    const c = txn.color.trim();
+    if (c) {
+      map.set(c, parseFloat(txn.endsTotal || txn.ends || 0));
+    }
+  }
+
+  const endsLabel = language === 'ta' ? 'இழை' : 'Ends';
+  const result: { color: string; ends: number; label: string }[] = [];
+
+  map.forEach((ends, color) => {
+    result.push({
+      color,
+      ends,
+      label: ends > 0 ? `${color}: ${ends} ${endsLabel}` : color
+    });
+  });
+
+  return result;
+};
+
 const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zinc-600 hover:bg-zinc-700', setToast }) => {
   const [warpers, setWarpers] = useState<Warper[]>([]);
   const [dispatches, setDispatches] = useState<YarnDispatch[]>([]);
@@ -1460,18 +1506,20 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                         colorsStr = Array.from(new Set(order.sections.map((s: any) => s.color).filter(Boolean))).join(', ');
                       }
 
+                      const colorBreakdown = getColorEndsBreakdown(txn, order, language);
                       const endsCount = txn.endsTotal || txn.ends || (order ? order.totalEnds : null);
                       const endsLabel = language === 'ta' ? 'இழை' : 'Ends';
                       const endsStr = endsCount ? `${endsCount} ${endsLabel}` : '';
 
                       let detailsParts = [weaverName];
-                      if (colorsStr) detailsParts.push(`${language === 'ta' ? 'கலர்:' : 'Color:'} ${colorsStr}`);
-                      if (endsStr) detailsParts.push(endsStr);
+                      if (colorBreakdown.length > 0) {
+                        detailsParts.push(colorBreakdown.map(cb => cb.label).join(' | '));
+                      } else {
+                        if (colorsStr) detailsParts.push(`${language === 'ta' ? 'கலர்:' : 'Color:'} ${colorsStr}`);
+                        if (endsStr) detailsParts.push(endsStr);
+                      }
 
                       particularsText = detailsParts.filter(Boolean).join(' | ');
-                      if (txn.warpNumber) {
-                        particularsText += ` (${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})`;
-                      }
                     }
 
                     return (
@@ -1535,18 +1583,20 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                         colorsStr = Array.from(new Set(order.sections.map((s: any) => s.color).filter(Boolean))).join(', ');
                       }
 
+                      const colorBreakdown = getColorEndsBreakdown(txn, order, language);
                       const endsCount = txn.endsTotal || txn.ends || (order ? order.totalEnds : null);
                       const endsLabel = language === 'ta' ? 'இழை' : 'Ends';
                       const endsStr = endsCount ? `${endsCount} ${endsLabel}` : '';
 
                       let detailsParts = [weaverName];
-                      if (colorsStr) detailsParts.push(`${language === 'ta' ? 'கலர்:' : 'Color:'} ${colorsStr}`);
-                      if (endsStr) detailsParts.push(endsStr);
+                      if (colorBreakdown.length > 0) {
+                        detailsParts.push(colorBreakdown.map(cb => cb.label).join(' | '));
+                      } else {
+                        if (colorsStr) detailsParts.push(`${language === 'ta' ? 'கலர்:' : 'Color:'} ${colorsStr}`);
+                        if (endsStr) detailsParts.push(endsStr);
+                      }
 
                       particularsText = detailsParts.filter(Boolean).join(' | ');
-                      if (txn.warpNumber) {
-                        particularsText += ` (${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})`;
-                      }
                     }
 
                     return (
@@ -1796,18 +1846,20 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                     colorsStr = Array.from(new Set(order.sections.map((s: any) => s.color).filter(Boolean))).join(', ');
                   }
 
+                  const colorBreakdown = getColorEndsBreakdown(txn, order, language);
                   const endsCount = txn.endsTotal || txn.ends || (order ? order.totalEnds : null);
                   const endsLabel = language === 'ta' ? 'இழை' : 'Ends';
                   const endsStr = endsCount ? `${endsCount} ${endsLabel}` : '';
 
                   let detailsParts = [weaverName];
-                  if (colorsStr) detailsParts.push(`${language === 'ta' ? 'கலர்:' : 'Color:'} ${colorsStr}`);
-                  if (endsStr) detailsParts.push(endsStr);
+                  if (colorBreakdown.length > 0) {
+                    detailsParts.push(colorBreakdown.map(cb => cb.label).join(' | '));
+                  } else {
+                    if (colorsStr) detailsParts.push(`${language === 'ta' ? 'கலர்:' : 'Color:'} ${colorsStr}`);
+                    if (endsStr) detailsParts.push(endsStr);
+                  }
 
                   particulars = detailsParts.filter(Boolean).join(' | ');
-                  if (txn.warpNumber) {
-                    particulars += ` (${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber})`;
-                  }
                 }
 
                 return (
@@ -2217,6 +2269,7 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                                 let colorTag = '';
                                 let endsTag = '';
                                 let sNoTag = '';
+                                const colorBreakdown = getColorEndsBreakdown(txn, order, language);
 
                                 if (txn.isDispatch) {
                                   const defaultText = language === 'ta' ? 'நூல் வரவு' : 'Yarn Given';
@@ -2253,10 +2306,6 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                                   if (endsCount) {
                                     endsTag = `${endsCount} ${endsLabel}`;
                                   }
-
-                                  if (txn.warpNumber) {
-                                    sNoTag = `${language === 'ta' ? 'வ.எண்:' : 'S.No:'} ${txn.warpNumber}`;
-                                  }
                                 }
 
                                 return (
@@ -2276,24 +2325,27 @@ const Warpers: React.FC<WarpersProps> = ({ user, language, buttonColor = 'bg-zin
                                             }
                                           }
                                         }}
-                                        className="text-left hover:text-blue-600 transition-colors"
+                                        className="text-left hover:text-blue-600 transition-colors w-full"
                                       >
                                         <div className="font-bold text-gray-900 leading-tight">{mainTitle}</div>
-                                        {(colorTag || endsTag || sNoTag) && (
+                                        {(colorBreakdown.length > 0 || colorTag || endsTag) && (
                                           <div className="text-[11px] text-gray-600 font-medium flex items-center gap-1.5 flex-wrap mt-1">
-                                            {colorTag && (
-                                              <span className="bg-zinc-100 text-zinc-800 px-1.5 py-0.5 rounded font-bold border border-zinc-200">
-                                                {language === 'ta' ? 'கலர்:' : 'Color:'} {colorTag}
-                                              </span>
+                                            {colorBreakdown.length > 0 ? (
+                                              colorBreakdown.map((item, i) => (
+                                                <span key={i} className="bg-zinc-100 text-zinc-900 px-1.5 py-0.5 rounded font-bold border border-zinc-200">
+                                                  {item.color}: <span className="text-emerald-700 font-extrabold">{item.ends > 0 ? `${item.ends} ${language === 'ta' ? 'இழை' : 'Ends'}` : ''}</span>
+                                                </span>
+                                              ))
+                                            ) : (
+                                              colorTag && (
+                                                <span className="bg-zinc-100 text-zinc-800 px-1.5 py-0.5 rounded font-bold border border-zinc-200">
+                                                  {language === 'ta' ? 'கலர்:' : 'Color:'} {colorTag}
+                                                </span>
+                                              )
                                             )}
-                                            {endsTag && (
+                                            {!colorBreakdown.length && endsTag && (
                                               <span className="bg-emerald-50 text-emerald-800 px-1.5 py-0.5 rounded font-bold border border-emerald-100">
                                                 {endsTag}
-                                              </span>
-                                            )}
-                                            {sNoTag && (
-                                              <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded border border-gray-200">
-                                                {sNoTag}
                                               </span>
                                             )}
                                           </div>
